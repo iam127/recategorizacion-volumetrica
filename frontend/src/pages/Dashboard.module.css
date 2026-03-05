@@ -1,0 +1,207 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* Welcome */
+.welcome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  padding: 24px 28px;
+  border-radius: 16px;
+  border: 1px solid #F0F0F0;
+}
+
+.welcomeTitle {
+  font-family: 'Sora', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0B1120;
+  margin: 0 0 4px;
+}
+
+.welcomeSub {
+  font-size: 14px;
+  color: #9CA3AF;
+  margin: 0;
+}
+
+.period {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  color: #9CA3AF;
+}
+
+.period strong {
+  color: #0B1120;
+  font-size: 14px;
+  text-transform: capitalize;
+}
+
+/* Stats grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.statCard {
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px 24px;
+  border: 1px solid #F0F0F0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: box-shadow 0.2s;
+}
+
+.statCard:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+}
+
+.statTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 0 0 2px;
+}
+
+.statSub {
+  font-size: 12px;
+  color: #C4C4C4;
+  margin: 0;
+}
+
+.statIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.statValue {
+  font-family: 'Sora', sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  color: #0B1120;
+  margin: 0;
+  letter-spacing: -1px;
+}
+
+.statTrend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  width: fit-content;
+}
+
+.trendUp {
+  background: #F0FDF4;
+  color: #10B981;
+}
+
+.trendDown {
+  background: #FEF2F2;
+  color: #EF4444;
+}
+
+.trendLabel {
+  font-weight: 400;
+  color: #9CA3AF;
+}
+
+/* Charts */
+.chartsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.chartCard {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #F0F0F0;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.chartTitle {
+  font-family: 'Sora', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0B1120;
+  margin: 0 0 4px;
+}
+
+.chartSub {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin: 0;
+}
+
+/* Legend */
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legendName {
+  flex: 1;
+  color: #374151;
+}
+
+.legendValue {
+  font-weight: 700;
+  color: #0B1120;
+  font-family: 'Sora', sans-serif;
+}
+
+@media (max-width: 1024px) {
+  .statsGrid { grid-template-columns: repeat(2, 1fr); }
+  .chartsGrid { grid-template-columns: 1fr; }
+}
