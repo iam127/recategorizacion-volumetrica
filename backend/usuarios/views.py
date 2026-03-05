@@ -69,3 +69,32 @@ def login(request):
 @api_view(['GET'])
 def perfil(request):
     return Response(UsuarioSerializer(request.user).data)
+
+
+@api_view(['GET', 'PUT'])
+def perfil(request):
+    if request.method == 'GET':
+        return Response(UsuarioSerializer(request.user).data)
+    
+    serializer = UpdatePerfilSerializer(request.user, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(UsuarioSerializer(serializer.instance).data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+def cambiar_password(request):
+    user = request.user
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+
+    if not user.check_password(old_password):
+        return Response({'error': 'Contraseña actual incorrecta'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if len(new_password) < 6:
+        return Response({'error': 'La nueva contraseña debe tener al menos 6 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.set_password(new_password)
+    user.save()
+    return Response({'message': 'Contraseña actualizada correctamente'})
