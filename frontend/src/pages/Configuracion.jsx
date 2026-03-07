@@ -121,7 +121,7 @@ function Configuracion() {
 
   const handleFotoSave = () => {
     if (!fotoPreview) return
-    localStorage.setItem('foto_perfil', fotoPreview)
+    localStorage.setItem(`foto_perfil_${user.email}`, fotoPreview)
     setFotoPerfil(fotoPreview)
     setFotoMsg({ type: 'success', text: 'Foto actualizada correctamente' })
     setTimeout(() => setFotoMsg({ type: '', text: '' }), 3000)
@@ -131,9 +131,9 @@ function Configuracion() {
     setFotoPreview(null)
     setFoto(null)
     setFotoPerfil(null)
-    localStorage.removeItem('foto_perfil')
+    localStorage.removeItem(`foto_perfil_${user.email}`)
   }
-
+  
   const tabs = [
     { id: 'perfil', label: 'Editar Perfil', icon: '👤' },
     { id: 'foto', label: 'Foto de Perfil', icon: '📷' },
