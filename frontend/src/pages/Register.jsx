@@ -9,6 +9,8 @@ function Register() {
   const [formData, setFormData] = useState({
     nombre: '', apellido: '', email: '', password: '', confirmPassword: ''
   })
+  const [rol, setRol] = useState('usuario')
+  const [adminKey, setAdminKey] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -28,9 +30,13 @@ function Register() {
       setError('La contraseña debe tener al menos 6 caracteres')
       return
     }
+    if (rol === 'admin' && adminKey !== '12345') {
+      setError('Clave de administrador incorrecta')
+      return
+    }
     setLoading(true)
     try {
-      await register(formData)
+      await register({ ...formData, rol })
       navigate('/login')
     } catch (err) {
       const errors = err.response?.data
@@ -50,15 +56,8 @@ function Register() {
       <div className={styles.left}>
         <div className={styles.leftInner}>
           <div className={styles.brand}>
-            <div className={styles.brandIcon}>
-              <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                <path d="M14 2L4 8v12l10 6 10-6V8L14 2z" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>
-                <path d="M14 8v12M8 11.5l6 3.5 6-3.5" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <span className={styles.brandName}>ConTugas</span>
+            <img src="/logo-contugas-sf.jpg" alt="ConTugas" className={styles.brandLogo} />
           </div>
-
           <h1 className={styles.heroTitle}>
             Únete al<br />
             <span className={styles.heroAccent}>Sistema de</span><br />
@@ -67,7 +66,6 @@ function Register() {
           <p className={styles.heroDesc}>
             Crea tu cuenta para acceder a la plataforma de recategorización volumétrica de ConTugas.
           </p>
-
           <div className={styles.steps}>
             {['Crea tu cuenta', 'Accede al sistema', 'Gestiona tarifas'].map((s, i) => (
               <div key={i} className={styles.step}>
@@ -76,7 +74,6 @@ function Register() {
               </div>
             ))}
           </div>
-
           <div className={styles.leftDecor} />
         </div>
       </div>
@@ -100,18 +97,77 @@ function Register() {
           )}
 
           <form onSubmit={handleSubmit} className={styles.form}>
+
+            {/* Selector de rol */}
+            <div className={styles.rolSelector}>
+              <button
+                type="button"
+                className={`${styles.rolBtn} ${rol === 'usuario' ? styles.rolActive : ''}`}
+                onClick={() => { setRol('usuario'); setAdminKey(''); setError('') }}
+              >
+                👤 Usuario
+              </button>
+              <button
+                type="button"
+                className={`${styles.rolBtn} ${rol === 'admin' ? styles.rolActive : ''}`}
+                onClick={() => { setRol('admin'); setError('') }}
+              >
+                ⚙️ Administrador
+              </button>
+            </div>
+
+            {/* Clave admin */}
+            <div style={{
+              display: 'grid',
+              gridTemplateRows: rol === 'admin' ? '1fr' : '0fr',
+              transition: 'grid-template-rows 0.25s ease'
+            }}>
+              <div style={{ overflow: 'hidden' }}>
+                <div className={styles.field} style={{ paddingBottom: '4px' }}>
+                  <label className={styles.label}>Clave de Administrador</label>
+                  <div className={styles.inputWrap}>
+                    <svg className={styles.inputIcon} width="18" height="18" viewBox="0 0 18 18" fill="none">
+                      <rect x="3" y="8" width="12" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                      <path d="M6 8V6a3 3 0 116 0v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                    <input
+                      type="password"
+                      value={adminKey}
+                      onChange={e => setAdminKey(e.target.value)}
+                      placeholder="Ingresa la clave de administrador"
+                      className={styles.inputWithIcon}
+                      required={rol === 'admin'}
+                    />
+                  </div>
+                  <p className={styles.adminHint}>Solo personal autorizado puede crear cuentas de administrador</p>
+                </div>
+              </div>
+            </div>
+
             <div className={styles.row}>
               <div className={styles.field}>
                 <label className={styles.label}>Nombre</label>
-                <input type="text" name="nombre" value={formData.nombre}
-                  onChange={handleChange} placeholder="Juan"
-                  className={styles.input} required />
+                <input
+                  type="text"
+                  name="nombre"
+                  value={formData.nombre}
+                  onChange={handleChange}
+                  placeholder="Juan"
+                  className={styles.input}
+                  required
+                />
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Apellido</label>
-                <input type="text" name="apellido" value={formData.apellido}
-                  onChange={handleChange} placeholder="Pérez"
-                  className={styles.input} required />
+                <input
+                  type="text"
+                  name="apellido"
+                  value={formData.apellido}
+                  onChange={handleChange}
+                  placeholder="Pérez"
+                  className={styles.input}
+                  required
+                />
               </div>
             </div>
 
@@ -121,9 +177,15 @@ function Register() {
                 <svg className={styles.inputIcon} width="18" height="18" viewBox="0 0 18 18" fill="none">
                   <path d="M2 4h14v10H2V4zm0 0l7 6 7-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                <input type="email" name="email" value={formData.email}
-                  onChange={handleChange} placeholder="ejemplo@contugas.com"
-                  className={styles.inputWithIcon} required />
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="ejemplo@contugas.com"
+                  className={styles.inputWithIcon}
+                  required
+                />
               </div>
             </div>
 
@@ -134,15 +196,26 @@ function Register() {
                   <rect x="3" y="8" width="12" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/>
                   <path d="M6 8V6a3 3 0 116 0v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
-                <input type={showPassword ? 'text' : 'password'} name="password"
-                  value={formData.password} onChange={handleChange}
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
                   placeholder="Mínimo 6 caracteres"
-                  className={styles.inputWithIcon} required />
+                  className={styles.inputWithIcon}
+                  required
+                />
                 <button type="button" className={styles.eyeBtn} onClick={() => setShowPassword(!showPassword)}>
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                    <path d="M9 4C5 4 2 9 2 9s3 5 7 5 7-5 7-5-3-5-7-5z" stroke="currentColor" strokeWidth="1.5"/>
-                    <circle cx="9" cy="9" r="2" stroke="currentColor" strokeWidth="1.5"/>
-                  </svg>
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                      <path d="M2 2l14 14M7.5 7.6A2 2 0 0010.4 10.5M6 4.9C7 4.3 8 4 9 4c4 0 7 5 7 5s-1.1 1.9-3 3.1M3.3 6.9C2.5 7.8 2 8.7 2 9s3 5 7 5c1 0 2-.3 2.9-.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                      <path d="M9 4C5 4 2 9 2 9s3 5 7 5 7-5 7-5-3-5-7-5z" stroke="currentColor" strokeWidth="1.5"/>
+                      <circle cx="9" cy="9" r="2" stroke="currentColor" strokeWidth="1.5"/>
+                    </svg>
+                  )}
                 </button>
               </div>
             </div>
@@ -154,10 +227,15 @@ function Register() {
                   <rect x="3" y="8" width="12" height="8" rx="2" stroke="currentColor" strokeWidth="1.5"/>
                   <path d="M6 8V6a3 3 0 116 0v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
-                <input type={showPassword ? 'text' : 'password'} name="confirmPassword"
-                  value={formData.confirmPassword} onChange={handleChange}
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
                   placeholder="Repite tu contraseña"
-                  className={styles.inputWithIcon} required />
+                  className={styles.inputWithIcon}
+                  required
+                />
               </div>
             </div>
 
@@ -165,7 +243,7 @@ function Register() {
               {loading ? (
                 <span className={styles.btnLoading}>
                   <span className={styles.spinner} />
-                  Creando cuenta...
+                  Registrando...
                 </span>
               ) : (
                 <>

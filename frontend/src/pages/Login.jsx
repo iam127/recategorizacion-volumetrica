@@ -39,13 +39,7 @@ function Login() {
       <div className={styles.left}>
         <div className={styles.leftInner}>
           <div className={styles.brand}>
-            <div className={styles.brandIcon}>
-              <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                <path d="M14 2L4 8v12l10 6 10-6V8L14 2z" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>
-                <path d="M14 8v12M8 11.5l6 3.5 6-3.5" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <span className={styles.brandName}>ConTugas</span>
+            <img src="/logo-contugas-sf.jpg" alt="ConTugas" className={styles.brandLogo} />
           </div>
 
           <div className={styles.heroText}>

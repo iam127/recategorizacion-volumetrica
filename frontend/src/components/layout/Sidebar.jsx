@@ -40,6 +40,13 @@ const icons = {
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
       <path d="M8 3H4a1 1 0 00-1 1v12a1 1 0 001 1h4M13 14l4-4-4-4M17 10H7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
+    
+  ),
+  operaciones: (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M3 4h14M3 8h9M3 12h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M14 11v6M11 14l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
   ),
 }
 
@@ -58,6 +65,7 @@ function Sidebar() {
     { to: '/reportes', label: 'Reportes', icon: icons.reportes },
     { to: '/usuarios', label: 'Usuarios', icon: icons.usuarios },
     { to: '/configuracion', label: 'Configuración', icon: icons.config },
+    { to: '/operaciones', label: 'Operaciones', icon: icons.operaciones },
   ]
 
   const userLinks = [
@@ -65,6 +73,7 @@ function Sidebar() {
     { to: '/clientes', label: 'Clientes', icon: icons.clientes },
     { to: '/reportes', label: 'Reportes', icon: icons.reportes },
     { to: '/configuracion', label: 'Configuración', icon: icons.config },
+    { to: '/operaciones', label: 'Operaciones', icon: icons.operaciones },
   ]
 
   const links = user?.rol === 'admin' ? adminLinks : userLinks
@@ -73,16 +82,7 @@ function Sidebar() {
     <aside className={styles.sidebar}>
       {/* Logo */}
       <div className={styles.logo}>
-        <div className={styles.logoIcon}>
-          <svg width="22" height="22" viewBox="0 0 28 28" fill="none">
-            <path d="M14 2L4 8v12l10 6 10-6V8L14 2z" stroke="#F59E0B" strokeWidth="1.5" fill="none"/>
-            <path d="M14 8v12M8 11.5l6 3.5 6-3.5" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </div>
-        <div className={styles.logoText}>
-          <span className={styles.logoName}>ConTugas</span>
-          <span className={styles.logoSub}>Recategorización</span>
-        </div>
+        <img src="/logo-contugas.jpg" alt="ConTugas" className={styles.logoImg} />
       </div>
 
       {/* User info */}

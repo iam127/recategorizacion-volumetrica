@@ -46,10 +46,14 @@
 }
 
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   margin-bottom: 64px;
+}
+
+.brandLogo {
+  height: 100px;
+  width: 280px;
+  object-fit: contain;
+  object-position: left center;
 }
 
 .brandIcon {
