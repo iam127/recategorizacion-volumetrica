@@ -1,15 +1,17 @@
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
+from .models import Usuario
 
-Usuario = get_user_model()
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=6)
     confirmPassword = serializers.CharField(write_only=True)
+    rol = serializers.CharField(default='usuario')
 
     class Meta:
         model = Usuario
-        fields = ['nombre', 'apellido', 'email', 'password', 'confirmPassword']
+        fields = ['nombre', 'apellido', 'email', 'password', 'confirmPassword', 'rol']
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
 
     def validate(self, data):
         if data['password'] != data['confirmPassword']:
@@ -18,13 +20,18 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('confirmPassword')
-        return Usuario.objects.create_user(**validated_data)
+        rol = validated_data.pop('rol', 'usuario')
+        user = Usuario.objects.create_user(**validated_data)
+        user.rol = rol
+        user.save()
+        return user
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = ['id', 'nombre', 'apellido', 'email', 'rol', 'fecha_creacion']
+
 
 class UpdatePerfilSerializer(serializers.ModelSerializer):
     class Meta:

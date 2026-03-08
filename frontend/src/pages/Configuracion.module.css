@@ -1,0 +1,397 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: #fff;
+  padding: 28px;
+  border-radius: 16px;
+  border: 1px solid #F0F0F0;
+}
+
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1e3a5f, #2e75b6);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Sora', sans-serif;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.avatarImg {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+}
+
+.headerName {
+  font-family: 'Sora', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0B1120;
+  margin: 0 0 4px;
+}
+
+.headerEmail {
+  font-size: 14px;
+  color: #9CA3AF;
+  margin: 0 0 8px;
+}
+
+.headerRole {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e3a5f;
+  background: #F0F4FF;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid #D6E4F0;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.tabs {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #F0F0F0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6B7280;
+  text-align: left;
+  transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.tab:hover {
+  background: #F5F7FA;
+  color: #0B1120;
+}
+
+.tabActive {
+  background: rgba(245, 158, 11, 0.08);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.content {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #F0F0F0;
+  padding: 32px;
+}
+
+.sectionTitle {
+  font-family: 'Sora', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0B1120;
+  margin: 0 0 6px;
+}
+
+.sectionSub {
+  font-size: 14px;
+  color: #9CA3AF;
+  margin: 0 0 28px;
+}
+
+.msg {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.success {
+  background: #F0FDF4;
+  color: #10B981;
+  border: 1px solid #BBF7D0;
+}
+
+.error {
+  background: #FEF2F2;
+  color: #EF4444;
+  border: 1px solid #FECACA;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.input {
+  padding: 12px 16px;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  color: #0B1120;
+  background: #FAFAFA;
+  outline: none;
+  transition: all 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: #F59E0B;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+.inputWrap {
+  position: relative;
+}
+
+.inputWrap .input {
+  padding-right: 44px;
+}
+
+.eyeBtn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.btn {
+  padding: 13px 24px;
+  background: #0B1120;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.2s;
+  align-self: flex-start;
+}
+
+.btn:hover:not(:disabled) {
+  background: #1a2a45;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(11,17,32,0.2);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnDanger {
+  padding: 10px 20px;
+  background: none;
+  color: #EF4444;
+  border: 1.5px solid #FECACA;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.2s;
+  align-self: flex-start;
+}
+
+.btnDanger:hover {
+  background: #FEF2F2;
+}
+
+/* Notificaciones */
+.notifList {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #F0F0F0;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.notifItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid #F0F0F0;
+}
+
+.notifItem:last-child {
+  border-bottom: none;
+}
+
+.notifInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.notifLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0B1120;
+}
+
+.notifDesc {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.toggle {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: #E5E7EB;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.toggleOn {
+  background: #F59E0B;
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.toggleOn .toggleThumb {
+  transform: translateX(20px);
+}
+
+/* Foto */
+.fotoWrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.fotoImg {
+  width: 120px;
+  height: 120px;
+  border-radius: 20px;
+  object-fit: cover;
+  border: 3px solid #F0F0F0;
+}
+
+.fotoPlaceholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #1e3a5f, #2e75b6);
+  color: #fff;
+  font-size: 36px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Sora', sans-serif;
+  border: 3px solid #F0F0F0;
+}
+
+.fotoActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fotoHint {
+  font-size: 13px;
+  color: #9CA3AF;
+  margin: 0;
+}
+
+.fotoLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border: 1.5px dashed #D1D5DB;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.fotoLabel:hover {
+  border-color: #F59E0B;
+  color: #F59E0B;
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.fotoInput {
+  display: none;
+}
+
+.fotoName {
+  font-size: 13px;
+  color: #10B981;
+  margin: 0;
+}
