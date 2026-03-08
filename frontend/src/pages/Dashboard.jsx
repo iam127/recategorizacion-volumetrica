@@ -5,14 +5,19 @@ import axios from 'axios'
 import styles from './Dashboard.module.css'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell, ResponsiveContainer, Legend
+  PieChart, Pie, Cell, ResponsiveContainer
 } from 'recharts'
 
 const API_URL = 'http://localhost:8000/api'
+const COLORS  = ['#1e3a5f', '#2e75b6', '#9CA3AF']
 
-const COLORS = ['#1e3a5f', '#2e75b6', '#9CA3AF']
+const TARIFA_COLORS = {
+  'REG-A1-CO': '#1e3a5f',
+  'REG-A2-CO': '#2e75b6',
+  'REG-B-CO':  '#9CA3AF',
+}
 
-function StatCard({ label, sub, value, icon, trend, trendLabel, color }) {
+function StatCard({ label, sub, value, icon, color }) {
   return (
     <div className={styles.statCard}>
       <div className={styles.statTop}>
@@ -25,42 +30,26 @@ function StatCard({ label, sub, value, icon, trend, trendLabel, color }) {
         </div>
       </div>
       <p className={styles.statValue}>{value}</p>
-      {trend !== undefined && (
-        <div className={`${styles.statTrend} ${trend >= 0 ? styles.trendUp : styles.trendDown}`}>
-          <span>{trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}</span>
-          <span className={styles.trendLabel}>{trendLabel}</span>
-        </div>
-      )}
     </div>
   )
 }
 
 function Dashboard() {
   const { user } = useAuth()
-  const [stats, setStats] = useState({
-    total_clientes: 0,
-    recategorizados: 0,
-    sin_cambios: 0,
-    pendientes: 0,
-  })
+  const [stats, setStats]     = useState(null)
   const [loading, setLoading] = useState(true)
+  const [tabCuadro3, setTabCuadro3] = useState('todos')
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const token = localStorage.getItem('access_token')
-        const res = await axios.get(`${API_URL}/dashboard/stats/`, {
+        const res = await axios.get(`${API_URL}/operaciones/dashboard/stats/`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         setStats(res.data)
-      } catch (err) {
-        // Backend aún no tiene el endpoint — mostramos 0
-        setStats({
-          total_clientes: 0,
-          recategorizados: 0,
-          sin_cambios: 0,
-          pendientes: 0,
-        })
+      } catch {
+        setStats(null)
       } finally {
         setLoading(false)
       }
@@ -68,18 +57,37 @@ function Dashboard() {
     fetchStats()
   }, [])
 
-  const pieData = [
-    { name: 'Categoría A1', value: stats.a1 || 0 },
-    { name: 'Categoría A2', value: stats.a2 || 0 },
-    { name: 'Categoría B', value: stats.b || 0 },
-  ]
+  const total      = stats?.total_clientes  || 0
+  const recat      = stats?.recategorizados || 0
+  const sinCambios = stats?.sin_cambios     || 0
+  const noAptos    = stats?.no_aptos        || 0
+  const anomalias  = stats?.anomalias       || 0
 
-  const barData = [
-    { name: 'A2 → A1', value: stats.a2_a1 || 0 },
-    { name: 'B → A2', value: stats.b_a2 || 0 },
-    { name: 'A1 → A2', value: stats.a1_a2 || 0 },
-    { name: 'A2 → B', value: stats.a2_b || 0 },
-  ]
+  // PieChart
+  const pieData = stats?.distribucion_categorias?.map(d => ({
+    name:  d.tarifa_nueva,
+    value: d.cantidad,
+  })) || []
+
+  // BarChart cambios
+  const barData = stats?.cambios_tarifarios
+    ?.filter(d => d.tarifa_anterior !== d.tarifa_nueva)
+    ?.map(d => ({
+      name:  `${d.tarifa_anterior} → ${d.tarifa_nueva}`,
+      value: d.cantidad_clientes,
+    })) || []
+
+  // Cuadro 3 — resumen tarifario completo
+  const cuadro3Data = stats?.cambios_tarifarios || []
+  const cuadro3Filtrado = tabCuadro3 === 'todos'
+    ? cuadro3Data
+    : cuadro3Data.filter(d => d.tarifa_anterior !== d.tarifa_nueva)
+
+  // Cuadro 4 — no aptos observaciones
+  const noAptosObs = stats?.no_aptos_observaciones || []
+
+  // Cuadro 5 — anomalías por tipo
+  const anomaliasTipo = stats?.anomalias_por_tipo || []
 
   return (
     <Layout title="Dashboard">
@@ -108,102 +116,235 @@ function Dashboard() {
           <StatCard
             label="TOTAL CLIENTES"
             sub="Base activa"
-            value={loading ? '...' : stats.total_clientes.toLocaleString()}
-            icon="👥"
-            color="#2e75b6"
-            trend={0}
-            trendLabel="vs mes anterior"
+            value={loading ? '...' : total.toLocaleString()}
+            icon="👥" color="#2e75b6"
           />
           <StatCard
             label="RECATEGORIZADOS"
-            sub={`${stats.total_clientes > 0 ? ((stats.recategorizados / stats.total_clientes) * 100).toFixed(1) : 0}% del total`}
-            value={loading ? '...' : stats.recategorizados.toLocaleString()}
-            icon="📊"
-            color="#10B981"
-            trend={0}
-            trendLabel="nuevos este mes"
+            sub={`${total > 0 ? ((recat / total) * 100).toFixed(1) : 0}% del total`}
+            value={loading ? '...' : recat.toLocaleString()}
+            icon="📊" color="#10B981"
           />
           <StatCard
             label="SIN CAMBIOS"
-            sub={`${stats.total_clientes > 0 ? ((stats.sin_cambios / stats.total_clientes) * 100).toFixed(1) : 0}% del total`}
-            value={loading ? '...' : stats.sin_cambios.toLocaleString()}
-            icon="➖"
-            color="#6B7280"
-            trend={0}
-            trendLabel="mantienen categoría"
+            sub={`${total > 0 ? ((sinCambios / total) * 100).toFixed(1) : 0}% del total`}
+            value={loading ? '...' : sinCambios.toLocaleString()}
+            icon="➖" color="#6B7280"
           />
           <StatCard
-            label="PENDIENTES"
-            sub="Requieren revisión"
-            value={loading ? '...' : stats.pendientes.toLocaleString()}
-            icon="⚠️"
-            color="#F59E0B"
-            trend={0}
-            trendLabel="vs semana anterior"
+            label="NO APTOS"
+            sub="No cumplen criterios"
+            value={loading ? '...' : noAptos.toLocaleString()}
+            icon="⚠️" color="#F59E0B"
+          />
+          <StatCard
+            label="ANOMALÍAS"
+            sub="Detectadas en lecturas"
+            value={loading ? '...' : anomalias.toLocaleString()}
+            icon="🔍" color="#EF4444"
           />
         </div>
 
-        {/* Charts */}
+        {/* Charts fila 1 */}
         <div className={styles.chartsGrid}>
-          {/* Bar chart */}
+
+          {/* BarChart cambios */}
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div>
-                <h3 className={styles.chartTitle}>Distribución de Cambios por Tipo</h3>
-                <p className={styles.chartSub}>
-                  Análisis de {stats.recategorizados} recategorizaciones
-                </p>
+                <h3 className={styles.chartTitle}>Distribución de Cambios Tarifarios</h3>
+                <p className={styles.chartSub}>Solo recategorizaciones entre tarifas distintas</p>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={barData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F0F0F0"/>
-                <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={60}/>
-                <Tooltip />
-                <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                  {barData.map((_, i) => (
-                    <Cell key={i} fill={i < 2 ? '#1e3a5f' : '#9CA3AF'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {barData.length === 0 ? (
+              <div className={styles.emptyChart}>Sin datos de cambios tarifarios aún</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={barData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F0F0F0"/>
+                  <XAxis type="number" tick={{ fontSize: 12 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={130}/>
+                  <Tooltip />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                    {barData.map((_, i) => (
+                      <Cell key={i} fill={i % 2 === 0 ? '#1e3a5f' : '#9CA3AF'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
-          {/* Pie chart */}
+          {/* PieChart distribución */}
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div>
-                <h3 className={styles.chartTitle}>Distribución Actual</h3>
+                <h3 className={styles.chartTitle}>Distribución por Tarifa Nueva</h3>
                 <p className={styles.chartSub}>Por categoría de consumo</p>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  dataKey="value"
-                >
-                  {pieData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i]} />
+            {pieData.length === 0 ? (
+              <div className={styles.emptyChart}>Sin datos de distribución aún</div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%"
+                      innerRadius={55} outerRadius={80} dataKey="value"
+                    >
+                      {pieData.map((_, i) => (
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className={styles.legend}>
+                  {pieData.map((item, i) => (
+                    <div key={i} className={styles.legendItem}>
+                      <span className={styles.legendDot} style={{ background: COLORS[i % COLORS.length] }} />
+                      <span className={styles.legendName}>{item.name}</span>
+                      <span className={styles.legendValue}>{item.value.toLocaleString()}</span>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className={styles.legend}>
-              {pieData.map((item, i) => (
-                <div key={i} className={styles.legendItem}>
-                  <span className={styles.legendDot} style={{ background: COLORS[i] }} />
-                  <span className={styles.legendName}>{item.name}</span>
-                  <span className={styles.legendValue}>{item.value}</span>
                 </div>
-              ))}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Cuadro 3 — Resumen Tarifario completo */}
+        <div className={styles.chartCard}>
+          <div className={styles.chartHeader}>
+            <div>
+              <h3 className={styles.chartTitle}>📋 Resumen Tarifario</h3>
+              <p className={styles.chartSub}>Movimientos entre categorías tarifarias</p>
             </div>
+            <div className={styles.tabs}>
+              <button
+                className={`${styles.tab} ${tabCuadro3 === 'todos' ? styles.tabActive : ''}`}
+                onClick={() => setTabCuadro3('todos')}
+              >Todos</button>
+              <button
+                className={`${styles.tab} ${tabCuadro3 === 'cambios' ? styles.tabActive : ''}`}
+                onClick={() => setTabCuadro3('cambios')}
+              >Solo cambios</button>
+            </div>
+          </div>
+          {cuadro3Filtrado.length === 0 ? (
+            <div className={styles.emptyChart}>Sin datos aún</div>
+          ) : (
+            <div className={styles.tableWrapper}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Tarifa Anterior</th>
+                    <th>Tarifa Nueva</th>
+                    <th>Cantidad</th>
+                    <th>Porcentaje</th>
+                    <th>Movimiento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cuadro3Filtrado.map((row, i) => (
+                    <tr key={i}>
+                      <td>
+                        <span className={styles.badge} style={{ background: TARIFA_COLORS[row.tarifa_anterior] + '20', color: TARIFA_COLORS[row.tarifa_anterior] }}>
+                          {row.tarifa_anterior}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={styles.badge} style={{ background: TARIFA_COLORS[row.tarifa_nueva] + '20', color: TARIFA_COLORS[row.tarifa_nueva] }}>
+                          {row.tarifa_nueva}
+                        </span>
+                      </td>
+                      <td className={styles.tdNum}>{row.cantidad_clientes.toLocaleString()}</td>
+                      <td className={styles.tdNum}>{parseFloat(row.porcentaje).toFixed(2)}%</td>
+                      <td>
+                        {row.tarifa_anterior === row.tarifa_nueva
+                          ? <span className={styles.badgeGray}>Sin cambio</span>
+                          : <span className={styles.badgeGreen}>Recategorizado</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Cuadro 4 y 5 — fila */}
+        <div className={styles.chartsGrid}>
+
+          {/* Cuadro 4 — No aptos */}
+          <div className={styles.chartCard}>
+            <div className={styles.chartHeader}>
+              <div>
+                <h3 className={styles.chartTitle}>⚠️ Clientes No Aptos</h3>
+                <p className={styles.chartSub}>Principales razones de exclusión</p>
+              </div>
+              <span className={styles.badgeCount}>{noAptos.toLocaleString()}</span>
+            </div>
+            {noAptosObs.length === 0 ? (
+              <div className={styles.emptyChart}>Sin datos aún</div>
+            ) : (
+              <div className={styles.obsList}>
+                {noAptosObs.map((item, i) => {
+                  const pct = noAptos > 0 ? (item.cantidad / noAptos * 100).toFixed(1) : 0
+                  return (
+                    <div key={i} className={styles.obsItem}>
+                      <div className={styles.obsTop}>
+                        <span className={styles.obsLabel}>{item.observacion}</span>
+                        <span className={styles.obsNum}>{item.cantidad.toLocaleString()}</span>
+                      </div>
+                      <div className={styles.obsBar}>
+                        <div
+                          className={styles.obsBarFill}
+                          style={{ width: `${pct}%`, background: '#F59E0B' }}
+                        />
+                      </div>
+                      <span className={styles.obsPct}>{pct}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Cuadro 5 — Anomalías */}
+          <div className={styles.chartCard}>
+            <div className={styles.chartHeader}>
+              <div>
+                <h3 className={styles.chartTitle}>🔍 Anomalías Detectadas</h3>
+                <p className={styles.chartSub}>Tipos de anomalías detectadas</p>
+              </div>
+              <span className={styles.badgeCount}>{anomalias.toLocaleString()}</span>
+            </div>
+            {anomaliasTipo.length === 0 ? (
+              <div className={styles.emptyChart}>Sin datos aún</div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={anomaliasTipo.map(d => ({ name: d.tipo_anomalia, value: d.cantidad }))} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F0F0F0"/>
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={160}/>
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#EF4444" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className={styles.legend} style={{ marginTop: 12 }}>
+                  {anomaliasTipo.map((item, i) => (
+                    <div key={i} className={styles.legendItem}>
+                      <span className={styles.legendDot} style={{ background: '#EF4444' }} />
+                      <span className={styles.legendName}>{item.tipo_anomalia}</span>
+                      <span className={styles.legendValue}>{item.cantidad.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 

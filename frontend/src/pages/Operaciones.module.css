@@ -376,6 +376,34 @@
   text-align: center;
 }
 
+.seccion {
+  margin-bottom: 20px;
+}
+
+.seccionTitle {
+  font-family: 'Sora', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0B1120;
+  margin: 0 0 4px;
+}
+
+.seccionDesc {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin: 0 0 10px;
+}
+
+.errorBox {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #EF4444;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
 @media (max-width: 1024px) {
   .grid { grid-template-columns: 1fr; }
   .resultadoGrid { grid-template-columns: repeat(2, 1fr); }
