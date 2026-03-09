@@ -385,41 +385,85 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
         "meses_en_ventana", "Estado inicial"
     ]].drop_duplicates()
 
-    # CUADRO 5
-    df_todos  = df.copy()
-    anomalias = []
-    for instalacion in df_todos["Instalación"].unique():
-        df_inst = df_todos[df_todos["Instalación"] == instalacion].sort_values("Fecha de lectura").copy()
-        df_inst["Lectura_Previa"] = df_inst["Lectura"].shift(1)
-        for _, row in df_inst.iterrows():
-            detectadas = []
-            mot = row["Motivo de lectura"]
-            if mot == 13:   detectadas.append("Corte de servicio")
-            elif mot == 18: detectadas.append("Reconexión de servicio")
-            elif mot == 22: detectadas.append("Desmontaje de medidor")
-            elif mot == 21: detectadas.append("Montaje de medidor")
-            if pd.notna(row["Lectura_Previa"]) and pd.notna(row["Lectura Anterior"]):
-                if abs(row["Lectura_Previa"] - row["Lectura Anterior"]) > 0.01:
-                    detectadas.append(f"Ruptura patrón diagonal ({row['Lectura_Previa']:.0f}≠{row['Lectura Anterior']:.0f})")
-            if row["Lectura"] == row["Lectura Anterior"] and row["Consumo m3 calculado"] > 0:
-                detectadas.append("Consumo sin cambio de lectura")
-            if pd.notna(row["Lectura_Previa"]) and row["Lectura"] > 0:
-                ratio = row["Lectura_Previa"] / row["Lectura"]
-                if ratio > 10 or ratio < 0.1:
-                    detectadas.append(f"Posible error de digitación ({row['Lectura_Previa']:.0f}→{row['Lectura']:.0f})")
-            if row["Lectura"] < 0:
-                detectadas.append("Lectura negativa")
-            elif row["Lectura"] == 0 and mot == 1:
-                detectadas.append("Lectura periódica en cero")
-            if row["Consumo m3 calculado"] < 0:
-                detectadas.append("Consumo negativo")
-            for a in detectadas:
-                anomalias.append({
-                    "Cuenta_contrato": row["Cuenta contrato"],
-                    "Instalacion":     instalacion,
-                    "Fecha":           row["Fecha de lectura"],
-                    "Tipo_anomalia":   a,
-                })
-    cuadro_5 = pd.DataFrame(anomalias)
+    # CUADRO 5 — vectorizado
+    df_todos = df.sort_values(["Instalación", "Fecha de lectura"]).copy()
+    df_todos["Lectura_Previa"] = df_todos.groupby("Instalación")["Lectura"].shift(1)
+
+    frames = []
+
+    # Eventos operativos
+    eventos_map = {13: "Corte de servicio", 18: "Reconexión de servicio",
+                22: "Desmontaje de medidor", 21: "Montaje de medidor"}
+    for cod, desc in eventos_map.items():
+        mask = df_todos["Motivo de lectura"] == cod
+        if mask.any():
+            tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
+            tmp["Tipo_anomalia"] = desc
+            frames.append(tmp)
+
+    # Ruptura patrón diagonal
+    mask = (
+        df_todos["Lectura_Previa"].notna() &
+        df_todos["Lectura Anterior"].notna() &
+        (abs(df_todos["Lectura_Previa"] - df_todos["Lectura Anterior"]) > 0.01)
+    )
+    if mask.any():
+        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura", "Lectura_Previa", "Lectura Anterior"]].copy()
+        tmp["Tipo_anomalia"] = "Ruptura patrón diagonal (" + tmp["Lectura_Previa"].map("{:.0f}".format) + "≠" + tmp["Lectura Anterior"].map("{:.0f}".format) + ")"
+        tmp = tmp.drop(columns=["Lectura_Previa", "Lectura Anterior"])
+        frames.append(tmp)
+
+    # Consumo sin cambio de lectura
+    mask = (
+        (df_todos["Lectura"] == df_todos["Lectura Anterior"]) &
+        (df_todos["Consumo m3 calculado"] > 0)
+    )
+    if mask.any():
+        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
+        tmp["Tipo_anomalia"] = "Consumo sin cambio de lectura"
+        frames.append(tmp)
+
+    # Posible error de digitación
+    mask = (
+        df_todos["Lectura_Previa"].notna() &
+        (df_todos["Lectura"] > 0) &
+        ((df_todos["Lectura_Previa"] / df_todos["Lectura"] > 10) |
+        (df_todos["Lectura_Previa"] / df_todos["Lectura"] < 0.1))
+    )
+    if mask.any():
+        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura", "Lectura_Previa", "Lectura"]].copy()
+        tmp["Tipo_anomalia"] = "Posible error de digitación (" + tmp["Lectura_Previa"].map("{:.0f}".format) + "→" + tmp["Lectura"].map("{:.0f}".format) + ")"
+        tmp = tmp.drop(columns=["Lectura_Previa", "Lectura"])
+        frames.append(tmp)
+
+    # Lectura negativa
+    mask = df_todos["Lectura"] < 0
+    if mask.any():
+        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
+        tmp["Tipo_anomalia"] = "Lectura negativa"
+        frames.append(tmp)
+
+    # Lectura periódica en cero
+    mask = (df_todos["Lectura"] == 0) & (df_todos["Motivo de lectura"] == 1)
+    if mask.any():
+        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
+        tmp["Tipo_anomalia"] = "Lectura periódica en cero"
+        frames.append(tmp)
+
+    # Consumo negativo
+    mask = df_todos["Consumo m3 calculado"] < 0
+    if mask.any():
+        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
+        tmp["Tipo_anomalia"] = "Consumo negativo"
+        frames.append(tmp)
+
+    if frames:
+        cuadro_5 = pd.concat(frames, ignore_index=True).rename(columns={
+            "Cuenta contrato": "Cuenta_contrato",
+            "Instalación":     "Instalacion",
+            "Fecha de lectura": "Fecha",
+        })
+    else:
+        cuadro_5 = pd.DataFrame(columns=["Cuenta_contrato", "Instalacion", "Fecha", "Tipo_anomalia"])
 
     return cuadro_2, cuadro_3, cuadro_4, cuadro_5

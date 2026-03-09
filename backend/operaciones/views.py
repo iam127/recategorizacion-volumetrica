@@ -14,16 +14,27 @@ class ImportarExcelView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request):
-        archivo_lectura = request.FILES.get("archivo_lectura")
-
-        if not archivo_lectura:
+        archivos = request.FILES.getlist("archivos_lectura")
+        if not archivos:
             return Response(
-                {"error": "Se requiere el archivo de lecturas"},
+                {"error": "Se requiere al menos un archivo de lecturas"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+        if len(archivos) > 7:
+            return Response(
+                {"error": "Máximo 7 archivos permitidos"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         try:
-            df_lectura, df_facturacion = cargar_excel(archivo_lectura)
+            dfs_lectura = []
+            dfs_facturacion = []
+            for archivo in archivos:
+                df_l, df_f = cargar_excel(archivo)
+                dfs_lectura.append(df_l)
+                dfs_facturacion.append(df_f)
+
+            df_lectura    = pd.concat(dfs_lectura,    ignore_index=True)
+            df_facturacion = pd.concat(dfs_facturacion, ignore_index=True)
             df_lectura, df_facturacion = limpiar_datos(df_lectura, df_facturacion)
             cuadro_2, cuadro_3, cuadro_4, cuadro_5 = ejecutar_recategorizacion(df_lectura, df_facturacion)
 
