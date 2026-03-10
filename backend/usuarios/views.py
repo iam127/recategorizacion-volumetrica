@@ -1,11 +1,12 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.utils import timezone
-from .serializers import RegisterSerializer, UsuarioSerializer
+from .serializers import RegisterSerializer, UsuarioSerializer, UpdatePerfilSerializer
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -28,7 +29,7 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):
-    email = request.data.get('email')
+    email    = request.data.get('email')
     password = request.data.get('password')
 
     if not email or not password:
@@ -51,7 +52,6 @@ def login(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # Actualizar último acceso
     user.ultimo_acceso = timezone.now()
     user.save(update_fields=['ultimo_acceso'])
 
@@ -66,16 +66,12 @@ def login(request):
     }, status=status.HTTP_200_OK)
 
 
-@api_view(['GET'])
-def perfil(request):
-    return Response(UsuarioSerializer(request.user).data)
-
-
 @api_view(['GET', 'PUT'])
+@permission_classes([IsAuthenticated])
 def perfil(request):
     if request.method == 'GET':
         return Response(UsuarioSerializer(request.user).data)
-    
+
     serializer = UpdatePerfilSerializer(request.user, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
@@ -84,16 +80,23 @@ def perfil(request):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def cambiar_password(request):
-    user = request.user
+    user         = request.user
     old_password = request.data.get('old_password')
     new_password = request.data.get('new_password')
 
     if not user.check_password(old_password):
-        return Response({'error': 'Contraseña actual incorrecta'}, status=status.HTTP_400_BAD_REQUEST)
-    
+        return Response(
+            {'error': 'Contraseña actual incorrecta'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     if len(new_password) < 6:
-        return Response({'error': 'La nueva contraseña debe tener al menos 6 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'error': 'La nueva contraseña debe tener al menos 6 caracteres'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     user.set_password(new_password)
     user.save()

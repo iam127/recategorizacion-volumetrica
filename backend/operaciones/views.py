@@ -4,9 +4,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser
 from rest_framework import status
 from django.db.models import Count, Q
+from django.http import HttpResponse
 from .etl import cargar_excel, limpiar_datos, ejecutar_recategorizacion
 from .models import ResultadoImportacion, Cliente, ResumenTarifario, ClienteNoApto, Anomalia
 import pandas as pd
+import io
 
 
 class ImportarExcelView(APIView):
@@ -33,7 +35,7 @@ class ImportarExcelView(APIView):
                 dfs_lectura.append(df_l)
                 dfs_facturacion.append(df_f)
 
-            df_lectura    = pd.concat(dfs_lectura,    ignore_index=True)
+            df_lectura     = pd.concat(dfs_lectura,     ignore_index=True)
             df_facturacion = pd.concat(dfs_facturacion, ignore_index=True)
             df_lectura, df_facturacion = limpiar_datos(df_lectura, df_facturacion)
             cuadro_2, cuadro_3, cuadro_4, cuadro_5 = ejecutar_recategorizacion(df_lectura, df_facturacion)
@@ -41,7 +43,7 @@ class ImportarExcelView(APIView):
             total_clientes  = len(cuadro_2)
             recategorizados = int((cuadro_2["Estado"] == "Recategorizado").sum())
             sin_cambios     = int((cuadro_2["Estado"] == "Sin cambio").sum())
-            no_aptos        = len(cuadro_4)
+            no_aptos        = cuadro_4["Cuenta contrato"].nunique()
             anomalias       = len(cuadro_5)
 
             importacion = ResultadoImportacion.objects.create(
@@ -229,3 +231,322 @@ class ClientesListView(APIView):
         } for c in clientes]
 
         return Response({"count": total, "results": results})
+
+
+# ─── REPORTES ────────────────────────────────────────────────────────────────
+
+class HistorialImportacionesView(APIView):
+    """Lista todas las importaciones del usuario."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        importaciones = ResultadoImportacion.objects.filter(usuario=request.user)
+        data = [{
+            "id":               imp.id,
+            "fecha": imp.fecha_importacion.astimezone(
+                __import__('zoneinfo').ZoneInfo('America/Lima')
+            ).strftime("%d/%m/%Y %H:%M"),
+            "total_registros":  imp.total_registros,
+            "procesados":       imp.procesados,
+            "recategorizados":  imp.recategorizados,
+            "sin_cambios":      imp.sin_cambios,
+            "no_aptos":         imp.no_aptos,
+            "anomalias":        imp.anomalias,
+        } for imp in importaciones]
+        return Response(data)
+
+
+class ExportarExcelView(APIView):
+    """Exporta Excel con las 4 hojas de la última importación con formato profesional."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from openpyxl import load_workbook
+        from openpyxl.styles import (
+            PatternFill, Font, Alignment, Border, Side, GradientFill
+        )
+        from openpyxl.utils import get_column_letter
+
+        importacion_id = request.query_params.get("importacion_id")
+
+        if importacion_id:
+            try:
+                imp = ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
+            except ResultadoImportacion.DoesNotExist:
+                return Response({"error": "Importación no encontrada"}, status=404)
+        else:
+            imp = ResultadoImportacion.objects.filter(usuario=request.user).first()
+            if not imp:
+                return Response({"error": "No hay importaciones"}, status=404)
+
+        from zoneinfo import ZoneInfo
+        fecha_lima = imp.fecha_importacion.astimezone(ZoneInfo('America/Lima'))
+
+        clientes  = list(Cliente.objects.filter(importacion=imp).values(
+            "instalacion", "cuenta_contrato", "total_dias_consumo", "total_consumo",
+            "promedio_diario", "promedio_mensual", "tarifa_anterior", "tarifa_nueva",
+            "estado", "porcion", "unidad_predial"
+        ))
+        resumenes = list(ResumenTarifario.objects.filter(importacion=imp).values(
+            "tarifa_anterior", "tarifa_nueva", "cantidad_clientes", "porcentaje"
+        ))
+        no_aptos  = list(ClienteNoApto.objects.filter(importacion=imp).values(
+            "cuenta_contrato", "instalacion", "tarifa_referencia",
+            "observacion", "porcion", "unidad_predial", "meses_en_ventana", "estado_inicial"
+        ))
+        anomalias = list(Anomalia.objects.filter(importacion=imp).values(
+            "cuenta_contrato", "instalacion", "fecha", "tipo_anomalia"
+        ))
+
+        # Paleta de colores CONTUGAS
+        AZUL_OSCURO   = "0B1120"
+        AZUL_MEDIO    = "1E3A5F"
+        AZUL_CLARO    = "2E75B6"
+        AMBAR         = "F59E0B"
+        BLANCO        = "FFFFFF"
+        GRIS_CLARO    = "F5F7FA"
+        GRIS_MEDIO    = "E5E7EB"
+        VERDE         = "10B981"
+        VERDE_CLARO   = "ECFDF5"
+        ROJO          = "EF4444"
+        ROJO_CLARO    = "FEF2F2"
+        AMBAR_CLARO   = "FFFBEB"
+        AZUL_ROW      = "EFF6FF"
+
+        thin  = Side(style="thin",   color=GRIS_MEDIO)
+        thick = Side(style="medium", color=AZUL_MEDIO)
+        border_thin   = Border(left=thin,  right=thin,  top=thin,  bottom=thin)
+        border_header = Border(left=thick, right=thick, top=thick, bottom=thick)
+
+        def estilo_header(ws, fila, col_inicio, col_fin, color_fondo=AZUL_OSCURO, color_letra=BLANCO):
+            for col in range(col_inicio, col_fin + 1):
+                cell = ws.cell(row=fila, column=col)
+                cell.fill      = PatternFill("solid", fgColor=color_fondo)
+                cell.font      = Font(bold=True, color=color_letra, size=10, name="Calibri")
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell.border    = border_header
+
+        def estilo_fila(ws, fila, num_cols, zebra=False):
+            for col in range(1, num_cols + 1):
+                cell = ws.cell(row=fila, column=col)
+                cell.fill      = PatternFill("solid", fgColor=AZUL_ROW if zebra else BLANCO)
+                cell.font      = Font(size=9, name="Calibri", color="374151")
+                cell.alignment = Alignment(vertical="center", wrap_text=False)
+                cell.border    = border_thin
+
+        def titulo_hoja(ws, titulo, subtitulo, num_cols):
+            # Fila 1 — título principal
+            ws.row_dimensions[1].height = 36
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
+            c = ws.cell(row=1, column=1)
+            c.value     = titulo
+            c.fill      = PatternFill("solid", fgColor=AZUL_OSCURO)
+            c.font      = Font(bold=True, color=AMBAR, size=14, name="Calibri")
+            c.alignment = Alignment(horizontal="center", vertical="center")
+
+            # Fila 2 — subtítulo
+            ws.row_dimensions[2].height = 22
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=num_cols)
+            c2 = ws.cell(row=2, column=1)
+            c2.value     = subtitulo
+            c2.fill      = PatternFill("solid", fgColor=AZUL_MEDIO)
+            c2.font      = Font(color=BLANCO, size=9, italic=True, name="Calibri")
+            c2.alignment = Alignment(horizontal="center", vertical="center")
+
+            # Fila 3 — separador ámbar
+            ws.row_dimensions[3].height = 4
+            ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=num_cols)
+            ws.cell(row=3, column=1).fill = PatternFill("solid", fgColor=AMBAR)
+
+        def autofit(ws, min_width=10, max_width=40):
+            for col in ws.columns:
+                max_len = 0
+                col_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    try:
+                        if cell.value:
+                            max_len = max(max_len, len(str(cell.value)))
+                    except:
+                        pass
+                ws.column_dimensions[col_letter].width = min(max(max_len + 2, min_width), max_width)
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+
+            # ── HOJA 1: Clientes Recategorizados ──────────────────────────────
+            df1 = pd.DataFrame(clientes).rename(columns={
+                "instalacion":        "Instalación",
+                "cuenta_contrato":    "Cuenta Contrato",
+                "total_dias_consumo": "Total Días",
+                "total_consumo":      "Total Consumo m3",
+                "promedio_diario":    "Prom. Diario",
+                "promedio_mensual":   "Prom. Mensual",
+                "tarifa_anterior":    "Tarifa Anterior",
+                "tarifa_nueva":       "Tarifa Nueva",
+                "estado":             "Estado",
+                "porcion":            "Porción",
+                "unidad_predial":     "Unidad Predial",
+            })
+            df1.to_excel(writer, sheet_name="Clientes Recategorizados", index=False, startrow=4)
+            ws1 = writer.sheets["Clientes Recategorizados"]
+            nc1 = len(df1.columns)
+            titulo_hoja(ws1, "CONTUGAS — Clientes Recategorizados",
+                        f"Importación: {fecha_lima.strftime('%d/%m/%Y %H:%M')}  |  Total: {len(df1):,} clientes", nc1)
+            ws1.row_dimensions[5].height = 32
+            estilo_header(ws1, 5, 1, nc1, AZUL_MEDIO, BLANCO)
+            for i, row in enumerate(ws1.iter_rows(min_row=6, max_row=5 + len(df1), min_col=1, max_col=nc1)):
+                zebra = i % 2 == 0
+                for cell in row:
+                    cell.fill      = PatternFill("solid", fgColor=AZUL_ROW if zebra else BLANCO)
+                    cell.font      = Font(size=9, name="Calibri", color="374151")
+                    cell.alignment = Alignment(vertical="center")
+                    cell.border    = border_thin
+                    # Color estado
+                    if cell.column == df1.columns.get_loc("Estado") + 1:
+                        if cell.value == "Recategorizado":
+                            cell.fill = PatternFill("solid", fgColor=VERDE_CLARO)
+                            cell.font = Font(size=9, name="Calibri", color=VERDE, bold=True)
+                        elif cell.value == "Sin cambio":
+                            cell.fill = PatternFill("solid", fgColor=GRIS_CLARO)
+                            cell.font = Font(size=9, name="Calibri", color="6B7280", bold=True)
+            ws1.freeze_panes = "A6"
+            autofit(ws1)
+
+            # ── HOJA 2: Resumen Tarifario ──────────────────────────────────────
+            df2 = pd.DataFrame(resumenes).rename(columns={
+                "tarifa_anterior":   "Tarifa Anterior",
+                "tarifa_nueva":      "Tarifa Nueva",
+                "cantidad_clientes": "Cantidad Clientes",
+                "porcentaje":        "Porcentaje %",
+            })
+            df2.to_excel(writer, sheet_name="Resumen Tarifario", index=False, startrow=4)
+            ws2 = writer.sheets["Resumen Tarifario"]
+            nc2 = len(df2.columns)
+            titulo_hoja(ws2, "CONTUGAS — Resumen Tarifario",
+                        f"Movimientos entre categorías  |  {fecha_lima.strftime('%d/%m/%Y %H:%M')}", nc2)
+            ws2.row_dimensions[5].height = 32
+            estilo_header(ws2, 5, 1, nc2, AZUL_OSCURO, AMBAR)
+            for i, row in enumerate(ws2.iter_rows(min_row=6, max_row=5 + len(df2), min_col=1, max_col=nc2)):
+                zebra = i % 2 == 0
+                for cell in row:
+                    cell.fill      = PatternFill("solid", fgColor=AZUL_ROW if zebra else BLANCO)
+                    cell.font      = Font(size=9, name="Calibri", color="374151")
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                    cell.border    = border_thin
+                    if cell.column == 3:  # Cantidad
+                        cell.font = Font(size=10, bold=True, name="Calibri", color=AZUL_MEDIO)
+                    if cell.column == 4:  # Porcentaje
+                        try:
+                            cell.number_format = '0.00"%"'
+                        except:
+                            pass
+                # Resaltar filas sin cambio
+                tarifa_ant = ws2.cell(row=row[0].row, column=1).value
+                tarifa_nva = ws2.cell(row=row[0].row, column=2).value
+                if tarifa_ant == tarifa_nva:
+                    for cell in row:
+                        cell.fill = PatternFill("solid", fgColor=GRIS_CLARO)
+                else:
+                    for cell in row:
+                        if i % 2 == 0:
+                            cell.fill = PatternFill("solid", fgColor="DBEAFE")
+            ws2.freeze_panes = "A6"
+            autofit(ws2)
+
+            # ── HOJA 3: Clientes No Aptos ──────────────────────────────────────
+            df3 = pd.DataFrame(no_aptos).rename(columns={
+                "cuenta_contrato":  "Cuenta Contrato",
+                "instalacion":      "Instalación",
+                "tarifa_referencia":"Tarifa Ref.",
+                "observacion":      "Observación",
+                "porcion":          "Porción",
+                "unidad_predial":   "Unidad Predial",
+                "meses_en_ventana": "Meses Ventana",
+                "estado_inicial":   "Estado Inicial",
+            })
+            df3.to_excel(writer, sheet_name="Clientes No Aptos", index=False, startrow=4)
+            ws3 = writer.sheets["Clientes No Aptos"]
+            nc3 = len(df3.columns)
+            titulo_hoja(ws3, "CONTUGAS — Clientes No Aptos",
+                        f"Clientes excluidos del proceso  |  Total: {len(df3):,}  |  {fecha_lima.strftime('%d/%m/%Y %H:%M')}", nc3)
+            ws3.row_dimensions[5].height = 32
+            estilo_header(ws3, 5, 1, nc3, "92400E", BLANCO)
+            for i, row in enumerate(ws3.iter_rows(min_row=6, max_row=5 + len(df3), min_col=1, max_col=nc3)):
+                for cell in row:
+                    cell.fill      = PatternFill("solid", fgColor=AMBAR_CLARO if i % 2 == 0 else BLANCO)
+                    cell.font      = Font(size=9, name="Calibri", color="374151")
+                    cell.alignment = Alignment(vertical="center", wrap_text=True)
+                    cell.border    = border_thin
+            ws3.freeze_panes = "A6"
+            ws3.row_dimensions[5].height = 32
+            autofit(ws3)
+
+            # ── HOJA 4: Anomalías ──────────────────────────────────────────────
+            df4 = pd.DataFrame(anomalias).rename(columns={
+                "cuenta_contrato": "Cuenta Contrato",
+                "instalacion":     "Instalación",
+                "fecha":           "Fecha",
+                "tipo_anomalia":   "Tipo Anomalía",
+            })
+            df4.to_excel(writer, sheet_name="Anomalías", index=False, startrow=4)
+            ws4 = writer.sheets["Anomalías"]
+            nc4 = len(df4.columns)
+            titulo_hoja(ws4, "CONTUGAS — Anomalías Detectadas",
+                        f"Registros con comportamiento inusual  |  Total: {len(df4):,}  |  {fecha_lima.strftime('%d/%m/%Y %H:%M')}", nc4)
+            ws4.row_dimensions[5].height = 32
+            estilo_header(ws4, 5, 1, nc4, "7F1D1D", BLANCO)
+            for i, row in enumerate(ws4.iter_rows(min_row=6, max_row=5 + len(df4), min_col=1, max_col=nc4)):
+                for cell in row:
+                    cell.fill      = PatternFill("solid", fgColor=ROJO_CLARO if i % 2 == 0 else BLANCO)
+                    cell.font      = Font(size=9, name="Calibri", color="374151")
+                    cell.alignment = Alignment(vertical="center")
+                    cell.border    = border_thin
+            ws4.freeze_panes = "A6"
+            autofit(ws4)
+
+        output.seek(0)
+        fecha_str = fecha_lima.strftime("%Y%m%d_%H%M")
+        response = HttpResponse(
+            output.read(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = f'attachment; filename="recategorizacion_{fecha_str}.xlsx"'
+        return response
+
+
+class ComparativaView(APIView):
+    """Compara dos importaciones del usuario."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        id1 = request.query_params.get("id1")
+        id2 = request.query_params.get("id2")
+
+        if not id1 or not id2:
+            return Response({"error": "Se requieren id1 e id2"}, status=400)
+
+        try:
+            imp1 = ResultadoImportacion.objects.get(id=id1, usuario=request.user)
+            imp2 = ResultadoImportacion.objects.get(id=id2, usuario=request.user)
+        except ResultadoImportacion.DoesNotExist:
+            return Response({"error": "Importación no encontrada"}, status=404)
+
+        def resumen(imp):
+            return {
+                "id":              imp.id,
+                "fecha": imp.fecha_importacion.astimezone(
+                    __import__('zoneinfo').ZoneInfo('America/Lima')
+                ).strftime("%d/%m/%Y %H:%M"),
+                "total_registros": imp.total_registros,
+                "recategorizados": imp.recategorizados,
+                "sin_cambios":     imp.sin_cambios,
+                "no_aptos":        imp.no_aptos,
+                "anomalias":       imp.anomalias,
+                "distribucion":    list(
+                    Cliente.objects.filter(importacion=imp)
+                    .values("tarifa_nueva")
+                    .annotate(cantidad=Count("id"))
+                ),
+            }
+
+        return Response({"periodo1": resumen(imp1), "periodo2": resumen(imp2)})
