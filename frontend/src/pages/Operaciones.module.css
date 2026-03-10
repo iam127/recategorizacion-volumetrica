@@ -408,3 +408,184 @@
   .grid { grid-template-columns: 1fr; }
   .resultadoGrid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, #0B1120, #0F1E38);
+  padding: 20px 24px;
+  border-radius: 16px;
+}
+.headerIcon { font-size: 28px; }
+.headerTitle {
+  font-family: 'Sora', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 4px;
+}
+.headerDesc {
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
+  margin: 0;
+}
+
+/* Instrucciones */
+.instrucciones {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #fff;
+  border: 1px solid #F0F0F0;
+  border-radius: 14px;
+  padding: 16px 24px;
+}
+.instrItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+.instrNum {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #0B1120;
+  color: #F59E0B;
+  font-family: 'Sora', sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.instrText {
+  font-size: 13px;
+  color: #6B7280;
+  line-height: 1.4;
+}
+.instrText strong { color: #0B1120; }
+.instrSep {
+  font-size: 20px;
+  font-weight: 700;
+  color: #D1D5DB;
+}
+
+/* Lista archivos */
+.archivosList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.archivoItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #F9FAFB;
+  border: 1px solid #F0F0F0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.archivoIdx {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #0B1120;
+  color: #F59E0B;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: 'Sora', sans-serif;
+}
+.archivoIcono { font-size: 20px; }
+.archivoInfo { flex: 1; min-width: 0; }
+.archivoNombre {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0B1120;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+.archivoTamano {
+  font-size: 11px;
+  color: #9CA3AF;
+  margin: 0;
+}
+.archivoRemove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #9CA3AF;
+  font-size: 14px;
+  padding: 4px;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+.archivoRemove:hover { color: #EF4444; }
+
+/* Resultado */
+.resultado {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #F0F0F0;
+  padding: 40px;
+  text-align: center;
+}
+.resultadoHeader { margin-bottom: 32px; }
+.resultadoIcon { font-size: 48px; }
+.resultadoTitle {
+  font-family: 'Sora', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #0B1120;
+  margin: 12px 0 6px;
+}
+.resultadoSub {
+  font-size: 14px;
+  color: #9CA3AF;
+  margin: 0;
+}
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.statBox {
+  background: #F9FAFB;
+  border: 1px solid #F0F0F0;
+  border-radius: 14px;
+  padding: 20px;
+}
+.statDestacado {
+  background: #ECFDF5;
+  border-color: #BBF7D0;
+}
+.statNum {
+  font-family: 'Sora', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: #0B1120;
+  margin: 0 0 4px;
+}
+.statLabel {
+  font-size: 12px;
+  color: #9CA3AF;
+  margin: 0;
+}
+.cardDesc {
+  font-size: 13px;
+  color: #9CA3AF;
+  margin: 0 0 16px;
+}

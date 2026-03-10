@@ -5,12 +5,124 @@ import styles from './Clientes.module.css'
 
 const API_URL = 'http://localhost:8000/api'
 
+function ModalCliente({ cliente, onClose }) {
+  if (!cliente) return null
+
+  const getTarifaColor = (tarifa) => {
+    if (tarifa === 'REG-A1-CO') return { bg: '#DBEAFE', color: '#1e3a5f' }
+    if (tarifa === 'REG-A2-CO') return { bg: '#EFF6FF', color: '#2e75b6' }
+    if (tarifa === 'REG-B-CO')  return { bg: '#F3F4F6', color: '#6B7280' }
+    return { bg: '#F3F4F6', color: '#6B7280' }
+  }
+
+  const t1 = getTarifaColor(cliente.Tarifa_referencia)
+  const t2 = getTarifaColor(cliente.Nueva_tarifa)
+  const cambio = cliente.Tarifa_referencia !== cliente.Nueva_tarifa
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={e => e.stopPropagation()}>
+
+        {/* Modal header */}
+        <div className={styles.modalHeader}>
+          <div>
+            <h3 className={styles.modalTitle}>Detalle del Cliente</h3>
+            <p className={styles.modalSub}>Instalación {cliente['Instalación']}</p>
+          </div>
+          <button className={styles.modalClose} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Estado banner */}
+        <div className={`${styles.modalBanner} ${cliente.Estado === 'Recategorizado' ? styles.bannerVerde : styles.bannerGris}`}>
+          <span className={styles.bannerIcon}>{cliente.Estado === 'Recategorizado' ? '🔄' : '➖'}</span>
+          <span className={styles.bannerText}>{cliente.Estado}</span>
+        </div>
+
+        {/* Info principal */}
+        <div className={styles.modalGrid}>
+          <div className={styles.modalField}>
+            <span className={styles.fieldLabel}>Instalación</span>
+            <span className={styles.fieldValue}>{cliente['Instalación']}</span>
+          </div>
+          <div className={styles.modalField}>
+            <span className={styles.fieldLabel}>Cuenta Contrato</span>
+            <span className={styles.fieldValue}>{cliente.Cuenta_contrato}</span>
+          </div>
+          <div className={styles.modalField}>
+            <span className={styles.fieldLabel}>Porción</span>
+            <span className={styles.fieldValue}>{cliente.Porcion || '—'}</span>
+          </div>
+          <div className={styles.modalField}>
+            <span className={styles.fieldLabel}>Unidad Predial</span>
+            <span className={styles.fieldValue}>{cliente.Unidad_Predial || '—'}</span>
+          </div>
+        </div>
+
+        {/* Separador */}
+        <div className={styles.modalDivider} />
+
+        {/* Consumo */}
+        <p className={styles.modalSection}>📊 Consumo</p>
+        <div className={styles.modalGrid}>
+          <div className={styles.modalStat}>
+            <span className={styles.modalStatNum}>{cliente.Total_dias_consumo?.toLocaleString()}</span>
+            <span className={styles.modalStatLabel}>Total Días Consumo</span>
+          </div>
+          <div className={styles.modalStat}>
+            <span className={styles.modalStatNum}>{cliente.Total_consumo_facturado?.toLocaleString()}</span>
+            <span className={styles.modalStatLabel}>Total Consumo m³</span>
+          </div>
+          <div className={styles.modalStat}>
+            <span className={styles.modalStatNum}>{cliente.Promedio_diario}</span>
+            <span className={styles.modalStatLabel}>Promedio Diario</span>
+          </div>
+          <div className={styles.modalStat}>
+            <span className={styles.modalStatNum}>{cliente.Promedio_mensual}</span>
+            <span className={styles.modalStatLabel}>Promedio Mensual</span>
+          </div>
+          <div className={styles.modalStat}>
+            <span className={styles.modalStatNum} style={{ color: '#F59E0B' }}>{cliente.Promedio_mensual_redondeado}</span>
+            <span className={styles.modalStatLabel}>Prom. Redondeado</span>
+          </div>
+        </div>
+
+        <div className={styles.modalDivider} />
+
+        {/* Tarifas */}
+        <p className={styles.modalSection}>🏷️ Recategorización Tarifaria</p>
+        <div className={styles.tarifasWrap}>
+          <div className={styles.tarifaBox}>
+            <span className={styles.tarifaLabel}>Tarifa Anterior</span>
+            <span className={styles.tarifaBadge} style={{ background: t1.bg, color: t1.color }}>
+              {cliente.Tarifa_referencia || '—'}
+            </span>
+          </div>
+          <div className={styles.tarifaArrow}>
+            {cambio ? '→' : '='}
+          </div>
+          <div className={styles.tarifaBox}>
+            <span className={styles.tarifaLabel}>Tarifa Nueva</span>
+            <span className={styles.tarifaBadge} style={{ background: t2.bg, color: t2.color }}>
+              {cliente.Nueva_tarifa || '—'}
+            </span>
+          </div>
+        </div>
+
+        <div className={styles.modalFooter}>
+          <button className={styles.btnCerrar} onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Clientes() {
-  const [clientes, setClientes]         = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [busqueda, setBusqueda]         = useState('')
-  const [paginaActual, setPaginaActual] = useState(1)
+  const [clientes, setClientes]           = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [busqueda, setBusqueda]           = useState('')
+  const [paginaActual, setPaginaActual]   = useState(1)
   const [totalClientes, setTotalClientes] = useState(0)
+  const [clienteSelec, setClienteSelec]   = useState(null)
   const clientesPorPagina = 10
 
   useEffect(() => { fetchClientes() }, [paginaActual, busqueda])
@@ -119,12 +231,13 @@ function Clientes() {
                   <th>Porción</th>
                   <th>Unidad Predial</th>
                   <th>Estado</th>
+                  <th>Acción</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={12} className={styles.emptyRow}>
+                    <td colSpan={13} className={styles.emptyRow}>
                       <div className={styles.loadingWrap}>
                         <span className={styles.spinner} />
                         <span>Cargando clientes...</span>
@@ -133,7 +246,7 @@ function Clientes() {
                   </tr>
                 ) : clientes.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className={styles.emptyRow}>
+                    <td colSpan={13} className={styles.emptyRow}>
                       <div className={styles.emptyWrap}>
                         <span className={styles.emptyIcon}>👥</span>
                         <p className={styles.emptyTitle}>Sin clientes registrados</p>
@@ -169,6 +282,14 @@ function Clientes() {
                         <span className={`${styles.estado} ${c.Estado === 'Recategorizado' ? styles.estadoCambio : styles.estadoSinCambio}`}>
                           {c.Estado}
                         </span>
+                      </td>
+                      <td>
+                        <button
+                          className={styles.btnVer}
+                          onClick={() => setClienteSelec(c)}
+                        >
+                          👁 Ver
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -207,6 +328,9 @@ function Clientes() {
           )}
         </div>
       </div>
+
+      {/* Modal */}
+      <ModalCliente cliente={clienteSelec} onClose={() => setClienteSelec(null)} />
     </Layout>
   )
 }

@@ -7,7 +7,7 @@ import styles from './Configuracion.module.css'
 const API_URL = 'http://localhost:8000/api/auth'
 
 function Configuracion() {
-  const { user, fotoPerfil, setFotoPerfil } = useAuth()
+  const { user, setUser, fotoPerfil, setFotoPerfil } = useAuth()
   const [activeTab, setActiveTab] = useState('perfil')
 
   // Perfil
@@ -60,7 +60,9 @@ function Configuracion() {
         headers: { Authorization: `Bearer ${token}` }
       })
       const storedUser = JSON.parse(localStorage.getItem('user'))
-      localStorage.setItem('user', JSON.stringify({ ...storedUser, ...perfil }))
+      const updatedUser = { ...storedUser, ...perfil }
+      localStorage.setItem('user', JSON.stringify(updatedUser))
+      setUser(updatedUser)
       setPerfilMsg({ type: 'success', text: 'Perfil actualizado correctamente' })
     } catch {
       setPerfilMsg({ type: 'error', text: 'Error al actualizar el perfil' })
