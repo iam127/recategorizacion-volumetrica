@@ -145,17 +145,17 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
         df_facturacion_clean["Periodo"].isin(periodos_validos)
     ].copy()
 
+    # Tarifa referencia: última tarifa VIGENTE en cualquier período histórico
     df_tarifa_ref = (
-        df_facturacion_ventana[
-            df_facturacion_ventana["Tipo de tarifa de facturación"].isin(TARIFAS_VIGENTES_SET)
+        df_facturacion_clean[
+            df_facturacion_clean["Tipo de tarifa de facturación"].isin(TARIFAS_VIGENTES)
         ]
         .sort_values(["Cuenta contrato", "Periodo"])
         .groupby("Cuenta contrato")
         .tail(1)[["Cuenta contrato", "Tipo de tarifa de facturación"]]
         .rename(columns={"Tipo de tarifa de facturación": "Tarifa referencia"})
     )
-
-    # Para cuentas sin tarifa vigente en ventana, usar última tarifa global (vigente o no)
+    # Para cuentas sin ninguna tarifa vigente histórica, usar última tarifa global
     cuentas_con_tarifa = set(df_tarifa_ref["Cuenta contrato"])
     cuentas_todas      = set(df_facturacion_clean["Cuenta contrato"])
     cuentas_sin_tarifa = cuentas_todas - cuentas_con_tarifa
@@ -229,10 +229,8 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
         .transform(lambda x: pd.factorize(x)[0] + 1)
     )
 
-    # ── CONSUMO MENSUAL CON JOBLIB ────────────────────────────────────────────
-    from joblib import Parallel, delayed
-
-    def _calcular_grupo(key, grupo):
+    # ── CONSUMO MENSUAL (igual que notebook) ─────────────────────────────────
+    def calcular_consumo_mensual(grupo):
         grupo = grupo.sort_values("Fecha de lectura")
         lectura_anterior  = grupo["Lectura Anterior"].iloc[0]
         lectura_actual    = grupo["Lectura"].iloc[-1]
@@ -258,7 +256,7 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
                 len(montaje)    > 0 and montaje["Fecha de lectura"].iloc[0]    > fecha_periodica,
             ])
             if eventos_despues:
-                return (key[0], key[1], max(lectura_periodica - lectura_anterior, 0))
+                return max(lectura_periodica - lectura_anterior, 0)
 
         if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
             ultima_fecha_d = desmontaje["Fecha de lectura"].max()
@@ -268,7 +266,7 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
                 m_ord = montaje.sort_values("Fecha de lectura")
                 D1, D2 = d_ord["Lectura"].iloc[0], d_ord["Lectura"].iloc[1]
                 M1, M2 = m_ord["Lectura"].iloc[0], m_ord["Lectura"].iloc[1]
-                return (key[0], key[1], max((D1 - lectura_anterior) + (D2 - M1) + (lectura_periodica - M2), 0))
+                return max((D1 - lectura_anterior) + (D2 - M1) + (lectura_periodica - M2), 0)
 
         if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
             primera_d   = desmontaje["Fecha de lectura"].min()
@@ -281,11 +279,11 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
                 d_antes = desmontaje[desmontaje["Fecha de lectura"] <= fecha_periodica]
                 m_antes = montaje[montaje["Fecha de lectura"]       <= fecha_periodica]
                 if len(d_antes) > 0 and len(m_antes) > 0:
-                    return (key[0], key[1], max(
+                    return max(
                         (d_antes["Lectura"].iloc[0] - lectura_anterior) +
                         (lectura_periodica - m_antes["Lectura"].iloc[0]), 0
-                    ))
-                return (key[0], key[1], max(lectura_periodica - lectura_anterior, 0))
+                    )
+                return max(lectura_periodica - lectura_anterior, 0)
 
         lec_corte      = corte["Lectura"].iloc[0]      if len(corte)      > 0 else None
         lec_reconexion = reconexion["Lectura"].iloc[0] if len(reconexion) > 0 else None
@@ -293,47 +291,41 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
         lec_montaje    = montaje["Lectura"].iloc[0]    if n_montajes      > 0 else None
 
         if n_desmontajes > 1 or n_montajes > 1:
-            return (key[0], key[1], max(lectura_actual - lectura_anterior, 0))
+            return max(lectura_actual - lectura_anterior, 0)
 
         mot_ant = primer_registro["Motivo_Registro_Anterior"]
         if mot_ant == CODIGOS_EVENTOS["corte"] and lec_reconexion is not None:
             corte_hist = primer_registro["Lectura_Registro_Anterior"]
             base_hist  = primer_registro["Lectura_Anterior_Registro_Anterior"]
             lec_final  = lectura_periodica if lectura_periodica is not None else lectura_actual
-            return (key[0], key[1], max((corte_hist - base_hist) + (lec_final - lec_reconexion), 0))
+            return max((corte_hist - base_hist) + (lec_final - lec_reconexion), 0)
 
         if mot_ant == CODIGOS_EVENTOS["desmontaje"] and lec_montaje is not None:
             desm_hist = primer_registro["Lectura_Registro_Anterior"]
             base_hist = primer_registro["Lectura_Anterior_Registro_Anterior"]
             lec_final = lectura_periodica if lectura_periodica is not None else lectura_actual
-            return (key[0], key[1], max((desm_hist - base_hist) + (lec_final - lec_montaje), 0))
+            return max((desm_hist - base_hist) + (lec_final - lec_montaje), 0)
 
         if lec_desmontaje is not None and lec_montaje is not None:
-            return (key[0], key[1], max((lec_desmontaje - lectura_anterior) + (lectura_actual - lec_montaje), 0))
+            return max((lec_desmontaje - lectura_anterior) + (lectura_actual - lec_montaje), 0)
         if lec_desmontaje is not None:
-            return (key[0], key[1], max(lec_desmontaje - lectura_anterior, 0))
+            return max(lec_desmontaje - lectura_anterior, 0)
         if lec_montaje is not None:
-            return (key[0], key[1], max(lectura_actual - lec_montaje, 0))
+            return max(lectura_actual - lec_montaje, 0)
         if lec_corte is not None and lec_reconexion is not None:
-            return (key[0], key[1], max((lec_corte - lectura_anterior) + (lectura_actual - lec_reconexion), 0))
+            return max((lec_corte - lectura_anterior) + (lectura_actual - lec_reconexion), 0)
         if lec_corte is not None:
-            return (key[0], key[1], max(lec_corte - lectura_anterior, 0))
+            return max(lec_corte - lectura_anterior, 0)
         if lec_reconexion is not None:
-            return (key[0], key[1], max(lectura_actual - lec_reconexion, 0))
+            return max(lectura_actual - lec_reconexion, 0)
         if lectura_periodica is not None:
-            return (key[0], key[1], max(lectura_periodica - lectura_anterior, 0))
-        return (key[0], key[1], max(lectura_actual - lectura_anterior, 0))
+            return max(lectura_periodica - lectura_anterior, 0)
+        return max(lectura_actual - lectura_anterior, 0)
 
-    grupos = list(df_validos.groupby(["Instalación", "Periodo"]))
-    num_cores = max(1, mp.cpu_count() - 1)
-    print(f"   🖥️  Usando {num_cores} núcleos para {len(grupos):,} grupos...")
-
-    resultados = Parallel(n_jobs=num_cores, backend="threading")(
-        delayed(_calcular_grupo)(key, grupo) for key, grupo in grupos
-    )
-
-    df_consumo_mensual = pd.DataFrame(
-        resultados, columns=["Instalación", "Periodo", "Consumo m3 ajustado"]
+    df_consumo_mensual = (
+        df_validos.groupby(["Instalación", "Periodo"])
+        .apply(calcular_consumo_mensual, include_groups=False)
+        .reset_index(name="Consumo m3 ajustado")
     )
     print("   ✅ Consumo mensual calculado")
 
