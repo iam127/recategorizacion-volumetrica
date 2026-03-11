@@ -5,7 +5,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework import status
 from django.db.models import Count, Q
 from django.http import HttpResponse
-from .etl import cargar_excel, limpiar_datos, ejecutar_recategorizacion
+from .etl import cargar_excel, cargar_excel_facturacion, limpiar_datos, limpiar_facturacion_externa, ejecutar_recategorizacion
 from .models import ResultadoImportacion, Cliente, ResumenTarifario, ClienteNoApto, Anomalia
 import pandas as pd
 import io
@@ -16,21 +16,30 @@ class ImportarExcelView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request):
-        archivos = request.FILES.getlist("archivos_lectura")
-        if not archivos:
+        archivos_lectura     = request.FILES.getlist("archivos_lectura")
+        archivos_facturacion = request.FILES.getlist("archivos_facturacion")  # opcional
+
+        if not archivos_lectura:
             return Response(
                 {"error": "Se requiere al menos un archivo de lecturas"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        if len(archivos) > 7:
+        if len(archivos_lectura) > 7:
             return Response(
-                {"error": "Máximo 7 archivos permitidos"},
+                {"error": "Máximo 7 archivos de lecturas permitidos"},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if len(archivos_facturacion) > 7:
+            return Response(
+                {"error": "Máximo 7 archivos de facturación permitidos"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
-            dfs_lectura = []
+            # Cargar archivos de lecturas
+            dfs_lectura     = []
             dfs_facturacion = []
-            for archivo in archivos:
+            for archivo in archivos_lectura:
                 df_l, df_f = cargar_excel(archivo)
                 dfs_lectura.append(df_l)
                 dfs_facturacion.append(df_f)
@@ -38,7 +47,21 @@ class ImportarExcelView(APIView):
             df_lectura     = pd.concat(dfs_lectura,     ignore_index=True)
             df_facturacion = pd.concat(dfs_facturacion, ignore_index=True)
             df_lectura, df_facturacion = limpiar_datos(df_lectura, df_facturacion)
-            cuadro_2, cuadro_3, cuadro_4, cuadro_5 = ejecutar_recategorizacion(df_lectura, df_facturacion)
+
+            # Cargar archivos de facturación externos (opcional)
+            df_facturacion_externa = None
+            if archivos_facturacion:
+                dfs_fact_ext = []
+                for archivo in archivos_facturacion:
+                    df_fe = cargar_excel_facturacion(archivo)
+                    dfs_fact_ext.append(df_fe)
+                df_facturacion_externa = limpiar_facturacion_externa(
+                    pd.concat(dfs_fact_ext, ignore_index=True)
+                )
+
+            cuadro_2, cuadro_3, cuadro_4, cuadro_5 = ejecutar_recategorizacion(
+                df_lectura, df_facturacion, df_facturacion_externa
+            )
 
             total_clientes  = len(cuadro_2)
             recategorizados = int((cuadro_2["Estado"] == "Recategorizado").sum())
@@ -120,6 +143,7 @@ class ImportarExcelView(APIView):
                 "no_aptos":                no_aptos,
                 "errores":                 0,
                 "anomalias":               anomalias,
+                "uso_facturacion_externa": bool(archivos_facturacion),
                 "distribucion_categorias": cuadro_2["Nueva_tarifa"].value_counts().to_dict(),
                 "cambios_tarifarios":      cuadro_3.to_dict("records"),
             }, status=status.HTTP_200_OK)
@@ -233,10 +257,7 @@ class ClientesListView(APIView):
         return Response({"count": total, "results": results})
 
 
-# ─── REPORTES ────────────────────────────────────────────────────────────────
-
 class HistorialImportacionesView(APIView):
-    """Lista todas las importaciones del usuario."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -257,7 +278,6 @@ class HistorialImportacionesView(APIView):
 
 
 class ExportarExcelView(APIView):
-    """Exporta Excel con las 4 hojas de la última importación con formato profesional."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -298,20 +318,17 @@ class ExportarExcelView(APIView):
             "cuenta_contrato", "instalacion", "fecha", "tipo_anomalia"
         ))
 
-        # Paleta de colores CONTUGAS
-        AZUL_OSCURO   = "0B1120"
-        AZUL_MEDIO    = "1E3A5F"
-        AZUL_CLARO    = "2E75B6"
-        AMBAR         = "F59E0B"
-        BLANCO        = "FFFFFF"
-        GRIS_CLARO    = "F5F7FA"
-        GRIS_MEDIO    = "E5E7EB"
-        VERDE         = "10B981"
-        VERDE_CLARO   = "ECFDF5"
-        ROJO          = "EF4444"
-        ROJO_CLARO    = "FEF2F2"
-        AMBAR_CLARO   = "FFFBEB"
-        AZUL_ROW      = "EFF6FF"
+        AZUL_OSCURO = "0B1120"
+        AZUL_MEDIO  = "1E3A5F"
+        AMBAR       = "F59E0B"
+        BLANCO      = "FFFFFF"
+        GRIS_CLARO  = "F5F7FA"
+        GRIS_MEDIO  = "E5E7EB"
+        VERDE       = "10B981"
+        VERDE_CLARO = "ECFDF5"
+        ROJO_CLARO  = "FEF2F2"
+        AMBAR_CLARO = "FFFBEB"
+        AZUL_ROW    = "EFF6FF"
 
         thin  = Side(style="thin",   color=GRIS_MEDIO)
         thick = Side(style="medium", color=AZUL_MEDIO)
@@ -326,16 +343,7 @@ class ExportarExcelView(APIView):
                 cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
                 cell.border    = border_header
 
-        def estilo_fila(ws, fila, num_cols, zebra=False):
-            for col in range(1, num_cols + 1):
-                cell = ws.cell(row=fila, column=col)
-                cell.fill      = PatternFill("solid", fgColor=AZUL_ROW if zebra else BLANCO)
-                cell.font      = Font(size=9, name="Calibri", color="374151")
-                cell.alignment = Alignment(vertical="center", wrap_text=False)
-                cell.border    = border_thin
-
         def titulo_hoja(ws, titulo, subtitulo, num_cols):
-            # Fila 1 — título principal
             ws.row_dimensions[1].height = 36
             ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
             c = ws.cell(row=1, column=1)
@@ -344,7 +352,6 @@ class ExportarExcelView(APIView):
             c.font      = Font(bold=True, color=AMBAR, size=14, name="Calibri")
             c.alignment = Alignment(horizontal="center", vertical="center")
 
-            # Fila 2 — subtítulo
             ws.row_dimensions[2].height = 22
             ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=num_cols)
             c2 = ws.cell(row=2, column=1)
@@ -353,12 +360,12 @@ class ExportarExcelView(APIView):
             c2.font      = Font(color=BLANCO, size=9, italic=True, name="Calibri")
             c2.alignment = Alignment(horizontal="center", vertical="center")
 
-            # Fila 3 — separador ámbar
             ws.row_dimensions[3].height = 4
             ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=num_cols)
             ws.cell(row=3, column=1).fill = PatternFill("solid", fgColor=AMBAR)
 
         def autofit(ws, min_width=10, max_width=40):
+            from openpyxl.utils import get_column_letter
             for col in ws.columns:
                 max_len = 0
                 col_letter = get_column_letter(col[0].column)
@@ -373,7 +380,6 @@ class ExportarExcelView(APIView):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
 
-            # ── HOJA 1: Clientes Recategorizados ──────────────────────────────
             df1 = pd.DataFrame(clientes).rename(columns={
                 "instalacion":        "Instalación",
                 "cuenta_contrato":    "Cuenta Contrato",
@@ -401,7 +407,6 @@ class ExportarExcelView(APIView):
                     cell.font      = Font(size=9, name="Calibri", color="374151")
                     cell.alignment = Alignment(vertical="center")
                     cell.border    = border_thin
-                    # Color estado
                     if cell.column == df1.columns.get_loc("Estado") + 1:
                         if cell.value == "Recategorizado":
                             cell.fill = PatternFill("solid", fgColor=VERDE_CLARO)
@@ -412,7 +417,6 @@ class ExportarExcelView(APIView):
             ws1.freeze_panes = "A6"
             autofit(ws1)
 
-            # ── HOJA 2: Resumen Tarifario ──────────────────────────────────────
             df2 = pd.DataFrame(resumenes).rename(columns={
                 "tarifa_anterior":   "Tarifa Anterior",
                 "tarifa_nueva":      "Tarifa Nueva",
@@ -433,14 +437,8 @@ class ExportarExcelView(APIView):
                     cell.font      = Font(size=9, name="Calibri", color="374151")
                     cell.alignment = Alignment(horizontal="center", vertical="center")
                     cell.border    = border_thin
-                    if cell.column == 3:  # Cantidad
+                    if cell.column == 3:
                         cell.font = Font(size=10, bold=True, name="Calibri", color=AZUL_MEDIO)
-                    if cell.column == 4:  # Porcentaje
-                        try:
-                            cell.number_format = '0.00"%"'
-                        except:
-                            pass
-                # Resaltar filas sin cambio
                 tarifa_ant = ws2.cell(row=row[0].row, column=1).value
                 tarifa_nva = ws2.cell(row=row[0].row, column=2).value
                 if tarifa_ant == tarifa_nva:
@@ -448,21 +446,20 @@ class ExportarExcelView(APIView):
                         cell.fill = PatternFill("solid", fgColor=GRIS_CLARO)
                 else:
                     for cell in row:
-                        if i % 2 == 0:
+                        if zebra:
                             cell.fill = PatternFill("solid", fgColor="DBEAFE")
             ws2.freeze_panes = "A6"
             autofit(ws2)
 
-            # ── HOJA 3: Clientes No Aptos ──────────────────────────────────────
             df3 = pd.DataFrame(no_aptos).rename(columns={
-                "cuenta_contrato":  "Cuenta Contrato",
-                "instalacion":      "Instalación",
-                "tarifa_referencia":"Tarifa Ref.",
-                "observacion":      "Observación",
-                "porcion":          "Porción",
-                "unidad_predial":   "Unidad Predial",
-                "meses_en_ventana": "Meses Ventana",
-                "estado_inicial":   "Estado Inicial",
+                "cuenta_contrato":   "Cuenta Contrato",
+                "instalacion":       "Instalación",
+                "tarifa_referencia": "Tarifa Ref.",
+                "observacion":       "Observación",
+                "porcion":           "Porción",
+                "unidad_predial":    "Unidad Predial",
+                "meses_en_ventana":  "Meses Ventana",
+                "estado_inicial":    "Estado Inicial",
             })
             df3.to_excel(writer, sheet_name="Clientes No Aptos", index=False, startrow=4)
             ws3 = writer.sheets["Clientes No Aptos"]
@@ -478,10 +475,8 @@ class ExportarExcelView(APIView):
                     cell.alignment = Alignment(vertical="center", wrap_text=True)
                     cell.border    = border_thin
             ws3.freeze_panes = "A6"
-            ws3.row_dimensions[5].height = 32
             autofit(ws3)
 
-            # ── HOJA 4: Anomalías ──────────────────────────────────────────────
             df4 = pd.DataFrame(anomalias).rename(columns={
                 "cuenta_contrato": "Cuenta Contrato",
                 "instalacion":     "Instalación",
@@ -515,7 +510,6 @@ class ExportarExcelView(APIView):
 
 
 class ComparativaView(APIView):
-    """Compara dos importaciones del usuario."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
