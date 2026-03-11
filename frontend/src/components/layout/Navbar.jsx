@@ -20,7 +20,7 @@ function Navbar({ title }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  useEffect(() => {
+  const cargarNotificaciones = () => {
     const token = localStorage.getItem('access_token')
     if (!token) return
 
@@ -35,74 +35,29 @@ function Navbar({ title }) {
 
       res.data.forEach(imp => {
         const fecha = imp.fecha
-
-        // Importación completada + Resumen ETL
         if (prefs.recategorizacion) {
-          notifs.push({
-            id:      `comp_${imp.id}`,
-            tipo:    'exito',
-            titulo:  'Importación completada',
-            mensaje: `${imp.procesados.toLocaleString()} clientes procesados · ${imp.recategorizados.toLocaleString()} recategorizados`,
-            fecha,
-          })
-          notifs.push({
-            id:      `resumen_${imp.id}`,
-            tipo:    'info',
-            titulo:  'Resumen del proceso ETL',
-            mensaje: `Sin cambios: ${imp.sin_cambios.toLocaleString()} · No aptos: ${imp.no_aptos.toLocaleString()} · Anomalías: ${imp.anomalias.toLocaleString()}`,
-            fecha,
-          })
+          notifs.push({ id: `comp_${imp.id}`, tipo: 'exito', titulo: 'Importación completada', mensaje: `${imp.procesados.toLocaleString()} clientes procesados · ${imp.recategorizados.toLocaleString()} recategorizados`, fecha })
+          notifs.push({ id: `resumen_${imp.id}`, tipo: 'info', titulo: 'Resumen del proceso ETL', mensaje: `Sin cambios: ${imp.sin_cambios.toLocaleString()} · No aptos: ${imp.no_aptos.toLocaleString()} · Anomalías: ${imp.anomalias.toLocaleString()}`, fecha })
         }
-
-        // Alerta anomalías
-        if (prefs.sistema && imp.anomalias > 0) {
-          notifs.push({
-            id:      `anom_${imp.id}`,
-            tipo:    'alerta',
-            titulo:  'Anomalías detectadas',
-            mensaje: `Se detectaron ${imp.anomalias.toLocaleString()} anomalías en la última importación`,
-            fecha,
-          })
-        }
-
-        // Alto porcentaje no aptos
-        const pctNoAptos = imp.total_registros > 0
-          ? (imp.no_aptos / imp.total_registros) * 100 : 0
-        if (prefs.sistema && pctNoAptos > 10) {
-          notifs.push({
-            id:      `noaptos_${imp.id}`,
-            tipo:    'advertencia',
-            titulo:  'Alto porcentaje de no aptos',
-            mensaje: `El ${pctNoAptos.toFixed(1)}% de clientes quedaron como no aptos`,
-            fecha,
-          })
-        }
-
-        // Pocos registros
-        if (prefs.sistema && imp.procesados < 10000) {
-          notifs.push({
-            id:      `pocos_${imp.id}`,
-            tipo:    'advertencia',
-            titulo:  'Pocos registros importados',
-            mensaje: `Solo se procesaron ${imp.procesados.toLocaleString()} clientes. Verifica que hayas cargado todos los meses.`,
-            fecha,
-          })
-        }
-
-        // Reporte disponible
-        if (prefs.reportes) {
-          notifs.push({
-            id:      `reporte_${imp.id}`,
-            tipo:    'info',
-            titulo:  'Reporte disponible',
-            mensaje: `El reporte de la importación del ${fecha} está listo para descargar`,
-            fecha,
-          })
-        }
+        if (prefs.sistema && imp.anomalias > 0)
+          notifs.push({ id: `anom_${imp.id}`, tipo: 'alerta', titulo: 'Anomalías detectadas', mensaje: `Se detectaron ${imp.anomalias.toLocaleString()} anomalías en la última importación`, fecha })
+        const pctNoAptos = imp.total_registros > 0 ? (imp.no_aptos / imp.total_registros) * 100 : 0
+        if (prefs.sistema && pctNoAptos > 10)
+          notifs.push({ id: `noaptos_${imp.id}`, tipo: 'advertencia', titulo: 'Alto porcentaje de no aptos', mensaje: `El ${pctNoAptos.toFixed(1)}% de clientes quedaron como no aptos`, fecha })
+        if (prefs.sistema && imp.procesados < 10000)
+          notifs.push({ id: `pocos_${imp.id}`, tipo: 'advertencia', titulo: 'Pocos registros importados', mensaje: `Solo se procesaron ${imp.procesados.toLocaleString()} clientes. Verifica que hayas cargado todos los meses.`, fecha })
+        if (prefs.reportes)
+          notifs.push({ id: `reporte_${imp.id}`, tipo: 'info', titulo: 'Reporte disponible', mensaje: `El reporte de la importación del ${fecha} está listo para descargar`, fecha })
       })
 
       setNotificaciones(notifs.slice(0, 20))
     }).catch(() => {})
+  }
+
+  useEffect(() => {
+    cargarNotificaciones()
+    const intervalo = setInterval(cargarNotificaciones, 60000) // refresca cada 60 seg
+    return () => clearInterval(intervalo)
   }, [])
 
   const noLeidas = notificaciones.filter(n => !leidas.includes(n.id)).length
