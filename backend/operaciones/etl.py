@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import multiprocessing as mp
 
 # =====================
 # CONFIGURACIÓN GENERAL
@@ -111,6 +110,100 @@ def _asignar_tarifa(promedio):
     return "REG-B-CO"
 
 
+def _calcular_consumo_mensual(grupo):
+    grupo = grupo.sort_values("Fecha de lectura")
+    lectura_anterior  = grupo["Lectura Anterior"].iloc[0]
+    lectura_actual    = grupo["Lectura"].iloc[-1]
+    primer_registro   = grupo.iloc[0]
+    numero_mes        = grupo["numero_mes_ventana"].iloc[0]
+
+    periodica  = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["periodica"]]
+    corte      = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["corte"]]
+    reconexion = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["reconexion"]]
+    desmontaje = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["desmontaje"]]
+    montaje    = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["montaje"]]
+
+    lectura_periodica = periodica["Lectura"].iloc[-1]          if not periodica.empty else None
+    fecha_periodica   = periodica["Fecha de lectura"].iloc[-1] if not periodica.empty else None
+    n_desmontajes     = len(desmontaje)
+    n_montajes        = len(montaje)
+
+    if numero_mes == NUM_MESES and not periodica.empty and fecha_periodica is not None:
+        eventos_despues = any([
+            len(corte)      > 0 and corte["Fecha de lectura"].iloc[0]      > fecha_periodica,
+            len(reconexion) > 0 and reconexion["Fecha de lectura"].iloc[0] > fecha_periodica,
+            len(desmontaje) > 0 and desmontaje["Fecha de lectura"].iloc[0] > fecha_periodica,
+            len(montaje)    > 0 and montaje["Fecha de lectura"].iloc[0]    > fecha_periodica,
+        ])
+        if eventos_despues:
+            return max(lectura_periodica - lectura_anterior, 0)
+
+    if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
+        ultima_fecha_d = desmontaje["Fecha de lectura"].max()
+        ultima_fecha_m = montaje["Fecha de lectura"].max()
+        if (ultima_fecha_d < fecha_periodica) and (ultima_fecha_m < fecha_periodica):
+            d_ord = desmontaje.sort_values("Fecha de lectura")
+            m_ord = montaje.sort_values("Fecha de lectura")
+            D1, D2 = d_ord["Lectura"].iloc[0], d_ord["Lectura"].iloc[1]
+            M1, M2 = m_ord["Lectura"].iloc[0], m_ord["Lectura"].iloc[1]
+            return max((D1 - lectura_anterior) + (D2 - M1) + (lectura_periodica - M2), 0)
+
+    if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
+        primera_d   = desmontaje["Fecha de lectura"].min()
+        ultima_d    = desmontaje["Fecha de lectura"].max()
+        primera_m   = montaje["Fecha de lectura"].min()
+        ultima_m    = montaje["Fecha de lectura"].max()
+        hay_antes   = (primera_d < fecha_periodica) or (primera_m < fecha_periodica)
+        hay_despues = (ultima_d  > fecha_periodica) or (ultima_m  > fecha_periodica)
+        if hay_antes and hay_despues:
+            d_antes = desmontaje[desmontaje["Fecha de lectura"] <= fecha_periodica]
+            m_antes = montaje[montaje["Fecha de lectura"]       <= fecha_periodica]
+            if len(d_antes) > 0 and len(m_antes) > 0:
+                return max(
+                    (d_antes["Lectura"].iloc[0] - lectura_anterior) +
+                    (lectura_periodica - m_antes["Lectura"].iloc[0]), 0
+                )
+            return max(lectura_periodica - lectura_anterior, 0)
+
+    lec_corte      = corte["Lectura"].iloc[0]      if len(corte)      > 0 else None
+    lec_reconexion = reconexion["Lectura"].iloc[0] if len(reconexion) > 0 else None
+    lec_desmontaje = desmontaje["Lectura"].iloc[0] if n_desmontajes   > 0 else None
+    lec_montaje    = montaje["Lectura"].iloc[0]    if n_montajes      > 0 else None
+
+    if n_desmontajes > 1 or n_montajes > 1:
+        return max(lectura_actual - lectura_anterior, 0)
+
+    mot_ant = primer_registro["Motivo_Registro_Anterior"]
+    if mot_ant == CODIGOS_EVENTOS["corte"] and lec_reconexion is not None:
+        corte_hist = primer_registro["Lectura_Registro_Anterior"]
+        base_hist  = primer_registro["Lectura_Anterior_Registro_Anterior"]
+        lec_final  = lectura_periodica if lectura_periodica is not None else lectura_actual
+        return max((corte_hist - base_hist) + (lec_final - lec_reconexion), 0)
+
+    if mot_ant == CODIGOS_EVENTOS["desmontaje"] and lec_montaje is not None:
+        desm_hist = primer_registro["Lectura_Registro_Anterior"]
+        base_hist = primer_registro["Lectura_Anterior_Registro_Anterior"]
+        lec_final = lectura_periodica if lectura_periodica is not None else lectura_actual
+        return max((desm_hist - base_hist) + (lec_final - lec_montaje), 0)
+
+    if lec_desmontaje is not None and lec_montaje is not None:
+        return max((lec_desmontaje - lectura_anterior) + (lectura_actual - lec_montaje), 0)
+    if lec_desmontaje is not None:
+        return max(lec_desmontaje - lectura_anterior, 0)
+    if lec_montaje is not None:
+        return max(lectura_actual - lec_montaje, 0)
+    if lec_corte is not None and lec_reconexion is not None:
+        return max((lec_corte - lectura_anterior) + (lectura_actual - lec_reconexion), 0)
+    if lec_corte is not None:
+        return max(lec_corte - lectura_anterior, 0)
+    if lec_reconexion is not None:
+        return max(lectura_actual - lec_reconexion, 0)
+    if lectura_periodica is not None:
+        return max(lectura_periodica - lectura_anterior, 0)
+
+    return max(lectura_actual - lectura_anterior, 0)
+
+
 def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
 
     df = df_lectura_clean.sort_values(["Instalación", "Fecha de lectura"]).reset_index(drop=True)
@@ -137,25 +230,17 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
     meses_a_usar     = NUM_MESES
     periodos_validos = pd.period_range(end=ultimo_periodo, periods=meses_a_usar, freq="M")
 
-    # ── TARIFA REFERENCIA: último período dentro de la ventana ────────────────
-    TARIFAS_VIGENTES_SET = set(TARIFAS_VIGENTES)
-
-    # Tomar el último período con tarifa VIGENTE dentro de la ventana
-    df_facturacion_ventana = df_facturacion_clean[
-        df_facturacion_clean["Periodo"].isin(periodos_validos)
-    ].copy()
-
+    # ── TARIFA REFERENCIA: última tarifa VIGENTE histórica ────────────────────
     df_tarifa_ref = (
-        df_facturacion_ventana[
-            df_facturacion_ventana["Tipo de tarifa de facturación"].isin(TARIFAS_VIGENTES_SET)
+        df_facturacion_clean[
+            df_facturacion_clean["Tipo de tarifa de facturación"].isin(TARIFAS_VIGENTES)
         ]
         .sort_values(["Cuenta contrato", "Periodo"])
         .groupby("Cuenta contrato")
         .tail(1)[["Cuenta contrato", "Tipo de tarifa de facturación"]]
         .rename(columns={"Tipo de tarifa de facturación": "Tarifa referencia"})
     )
-
-    # Para cuentas sin tarifa vigente en ventana, usar última tarifa global (vigente o no)
+    # Para cuentas sin ninguna tarifa vigente histórica, usar última tarifa global
     cuentas_con_tarifa = set(df_tarifa_ref["Cuenta contrato"])
     cuentas_todas      = set(df_facturacion_clean["Cuenta contrato"])
     cuentas_sin_tarifa = cuentas_todas - cuentas_con_tarifa
@@ -229,111 +314,37 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
         .transform(lambda x: pd.factorize(x)[0] + 1)
     )
 
-    # ── CONSUMO MENSUAL CON JOBLIB ────────────────────────────────────────────
-    from joblib import Parallel, delayed
+    # ── CONSUMO MENSUAL HÍBRIDO ───────────────────────────────────────────────
+    # Simples (solo motivo 1): vectorizado
+    # Complejos (con eventos): groupby.apply exacto igual al notebook
 
-    def _calcular_grupo(key, grupo):
-        grupo = grupo.sort_values("Fecha de lectura")
-        lectura_anterior  = grupo["Lectura Anterior"].iloc[0]
-        lectura_actual    = grupo["Lectura"].iloc[-1]
-        primer_registro   = grupo.iloc[0]
-        numero_mes        = grupo["numero_mes_ventana"].iloc[0]
-
-        periodica  = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["periodica"]]
-        corte      = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["corte"]]
-        reconexion = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["reconexion"]]
-        desmontaje = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["desmontaje"]]
-        montaje    = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["montaje"]]
-
-        lectura_periodica = periodica["Lectura"].iloc[-1]          if not periodica.empty else None
-        fecha_periodica   = periodica["Fecha de lectura"].iloc[-1] if not periodica.empty else None
-        n_desmontajes     = len(desmontaje)
-        n_montajes        = len(montaje)
-
-        if numero_mes == NUM_MESES and not periodica.empty and fecha_periodica is not None:
-            eventos_despues = any([
-                len(corte)      > 0 and corte["Fecha de lectura"].iloc[0]      > fecha_periodica,
-                len(reconexion) > 0 and reconexion["Fecha de lectura"].iloc[0] > fecha_periodica,
-                len(desmontaje) > 0 and desmontaje["Fecha de lectura"].iloc[0] > fecha_periodica,
-                len(montaje)    > 0 and montaje["Fecha de lectura"].iloc[0]    > fecha_periodica,
-            ])
-            if eventos_despues:
-                return (key[0], key[1], max(lectura_periodica - lectura_anterior, 0))
-
-        if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
-            ultima_fecha_d = desmontaje["Fecha de lectura"].max()
-            ultima_fecha_m = montaje["Fecha de lectura"].max()
-            if (ultima_fecha_d < fecha_periodica) and (ultima_fecha_m < fecha_periodica):
-                d_ord = desmontaje.sort_values("Fecha de lectura")
-                m_ord = montaje.sort_values("Fecha de lectura")
-                D1, D2 = d_ord["Lectura"].iloc[0], d_ord["Lectura"].iloc[1]
-                M1, M2 = m_ord["Lectura"].iloc[0], m_ord["Lectura"].iloc[1]
-                return (key[0], key[1], max((D1 - lectura_anterior) + (D2 - M1) + (lectura_periodica - M2), 0))
-
-        if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
-            primera_d   = desmontaje["Fecha de lectura"].min()
-            ultima_d    = desmontaje["Fecha de lectura"].max()
-            primera_m   = montaje["Fecha de lectura"].min()
-            ultima_m    = montaje["Fecha de lectura"].max()
-            hay_antes   = (primera_d < fecha_periodica) or (primera_m < fecha_periodica)
-            hay_despues = (ultima_d  > fecha_periodica) or (ultima_m  > fecha_periodica)
-            if hay_antes and hay_despues:
-                d_antes = desmontaje[desmontaje["Fecha de lectura"] <= fecha_periodica]
-                m_antes = montaje[montaje["Fecha de lectura"]       <= fecha_periodica]
-                if len(d_antes) > 0 and len(m_antes) > 0:
-                    return (key[0], key[1], max(
-                        (d_antes["Lectura"].iloc[0] - lectura_anterior) +
-                        (lectura_periodica - m_antes["Lectura"].iloc[0]), 0
-                    ))
-                return (key[0], key[1], max(lectura_periodica - lectura_anterior, 0))
-
-        lec_corte      = corte["Lectura"].iloc[0]      if len(corte)      > 0 else None
-        lec_reconexion = reconexion["Lectura"].iloc[0] if len(reconexion) > 0 else None
-        lec_desmontaje = desmontaje["Lectura"].iloc[0] if n_desmontajes   > 0 else None
-        lec_montaje    = montaje["Lectura"].iloc[0]    if n_montajes      > 0 else None
-
-        if n_desmontajes > 1 or n_montajes > 1:
-            return (key[0], key[1], max(lectura_actual - lectura_anterior, 0))
-
-        mot_ant = primer_registro["Motivo_Registro_Anterior"]
-        if mot_ant == CODIGOS_EVENTOS["corte"] and lec_reconexion is not None:
-            corte_hist = primer_registro["Lectura_Registro_Anterior"]
-            base_hist  = primer_registro["Lectura_Anterior_Registro_Anterior"]
-            lec_final  = lectura_periodica if lectura_periodica is not None else lectura_actual
-            return (key[0], key[1], max((corte_hist - base_hist) + (lec_final - lec_reconexion), 0))
-
-        if mot_ant == CODIGOS_EVENTOS["desmontaje"] and lec_montaje is not None:
-            desm_hist = primer_registro["Lectura_Registro_Anterior"]
-            base_hist = primer_registro["Lectura_Anterior_Registro_Anterior"]
-            lec_final = lectura_periodica if lectura_periodica is not None else lectura_actual
-            return (key[0], key[1], max((desm_hist - base_hist) + (lec_final - lec_montaje), 0))
-
-        if lec_desmontaje is not None and lec_montaje is not None:
-            return (key[0], key[1], max((lec_desmontaje - lectura_anterior) + (lectura_actual - lec_montaje), 0))
-        if lec_desmontaje is not None:
-            return (key[0], key[1], max(lec_desmontaje - lectura_anterior, 0))
-        if lec_montaje is not None:
-            return (key[0], key[1], max(lectura_actual - lec_montaje, 0))
-        if lec_corte is not None and lec_reconexion is not None:
-            return (key[0], key[1], max((lec_corte - lectura_anterior) + (lectura_actual - lec_reconexion), 0))
-        if lec_corte is not None:
-            return (key[0], key[1], max(lec_corte - lectura_anterior, 0))
-        if lec_reconexion is not None:
-            return (key[0], key[1], max(lectura_actual - lec_reconexion, 0))
-        if lectura_periodica is not None:
-            return (key[0], key[1], max(lectura_periodica - lectura_anterior, 0))
-        return (key[0], key[1], max(lectura_actual - lectura_anterior, 0))
-
-    grupos = list(df_validos.groupby(["Instalación", "Periodo"]))
-    num_cores = max(1, mp.cpu_count() - 1)
-    print(f"   🖥️  Usando {num_cores} núcleos para {len(grupos):,} grupos...")
-
-    resultados = Parallel(n_jobs=num_cores, backend="threading")(
-        delayed(_calcular_grupo)(key, grupo) for key, grupo in grupos
+    EVENTOS = [13, 18, 22, 21]
+    inst_complejas = set(
+        df_validos[df_validos["Motivo de lectura"].isin(EVENTOS)]["Instalación"].unique()
     )
 
-    df_consumo_mensual = pd.DataFrame(
-        resultados, columns=["Instalación", "Periodo", "Consumo m3 ajustado"]
+    df_simples   = df_validos[~df_validos["Instalación"].isin(inst_complejas)].copy()
+    df_complejos = df_validos[df_validos["Instalación"].isin(inst_complejas)].copy()
+
+    print(f"   ⚡ Simples (vectorizado): {df_simples['Instalación'].nunique():,}")
+    print(f"   🔧 Complejos (apply):     {df_complejos['Instalación'].nunique():,}")
+
+    # Simples: usar groupby.apply igual que notebook
+    df_consumo_simples = (
+        df_simples.groupby(["Instalación", "Periodo"])
+        .apply(_calcular_consumo_mensual, include_groups=False)
+        .reset_index(name="Consumo m3 ajustado")
+    )
+
+    # Complejos: groupby.apply igual al notebook
+    df_consumo_complejos = (
+        df_complejos.groupby(["Instalación", "Periodo"])
+        .apply(_calcular_consumo_mensual, include_groups=False)
+        .reset_index(name="Consumo m3 ajustado")
+    )
+
+    df_consumo_mensual = pd.concat(
+        [df_consumo_simples, df_consumo_complejos], ignore_index=True
     )
     print("   ✅ Consumo mensual calculado")
 
@@ -376,11 +387,10 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
             Total_dias_consumo      =("Dias_mes",                 "sum"),
             Total_consumo_facturado =("Consumo_mes",              "sum"),
             Tarifa_referencia       =("Tarifa_referencia",        "first"),
-            Porcon                  =("Porcion",                  "first"),
+            Porcion                 =("Porcion",                  "first"),
             Unidad_Predial          =("Unidad_Predial",           "first"),
         ).reset_index()
     )
-    cuadro_2 = cuadro_2.rename(columns={"Porcon": "Porcion"})
     cuadro_2["Promedio_diario"] = (
         cuadro_2["Total_consumo_facturado"] /
         cuadro_2["Total_dias_consumo"].replace(0, np.nan)
@@ -450,7 +460,6 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
     df_todos["Lectura_Previa"] = df_todos.groupby("Instalación")["Lectura"].shift(1)
 
     frames = []
-
     eventos_map = {
         13: "Corte de servicio",
         18: "Reconexión de servicio",
