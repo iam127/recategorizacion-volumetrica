@@ -589,3 +589,100 @@
   color: #9CA3AF;
   margin: 0 0 16px;
 }
+
+/* ── Agregar al final de Operaciones.module.css ── */
+
+.cardFull {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.badge {
+  font-size: 0.65rem;
+  background: #1e3a5f;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.badgeOpcional {
+  font-size: 0.65rem;
+  background: #f59e0b22;
+  color: #b45309;
+  border: 1px solid #f59e0b55;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.dropzoneFact {
+  border-color: #f59e0b55;
+  background: #fffbeb;
+}
+
+.dropzoneFact:hover {
+  border-color: #f59e0b;
+  background: #fef3c7;
+}
+
+.archivosListH {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.archivosListH .archivoItem {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 200px;
+}
+
+.cardFull {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.badge {
+  font-size: 0.65rem;
+  background: #1e3a5f;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.badgeOpcional {
+  font-size: 0.65rem;
+  background: #f59e0b22;
+  color: #b45309;
+  border: 1px solid #f59e0b55;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.dropzoneFact {
+  border-color: #f59e0b55;
+  background: #fffbeb;
+}
+
+.archivosListH {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.archivosListH .archivoItem {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 200px;
+}
