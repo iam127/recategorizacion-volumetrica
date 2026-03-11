@@ -329,12 +329,15 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean):
     print(f"   ⚡ Simples (vectorizado): {df_simples['Instalación'].nunique():,}")
     print(f"   🔧 Complejos (apply):     {df_complejos['Instalación'].nunique():,}")
 
-    # Simples: usar groupby.apply igual que notebook
-    df_consumo_simples = (
-        df_simples.groupby(["Instalación", "Periodo"])
-        .apply(_calcular_consumo_mensual, include_groups=False)
-        .reset_index(name="Consumo m3 ajustado")
-    )
+    # Simples: lectura_periodica - lectura_anterior por grupo
+    df_simples_agg = df_simples.groupby(["Instalación", "Periodo"]).agg(
+        lectura_max          =("Lectura",          "max"),
+        lectura_anterior_min =("Lectura Anterior", "min"),
+    ).reset_index()
+    df_simples_agg["Consumo m3 ajustado"] = (
+        df_simples_agg["lectura_max"] - df_simples_agg["lectura_anterior_min"]
+    ).clip(lower=0)
+    df_consumo_simples = df_simples_agg[["Instalación", "Periodo", "Consumo m3 ajustado"]]
 
     # Complejos: groupby.apply igual al notebook
     df_consumo_complejos = (
