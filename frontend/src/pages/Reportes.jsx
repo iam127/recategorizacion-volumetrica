@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
 import Layout from '../components/layout/Layout'
 import axios from 'axios'
 import styles from './Reportes.module.css'
@@ -11,15 +12,17 @@ const API_URL = 'http://localhost:8000/api'
 const COLORS  = ['#1e3a5f', '#2e75b6', '#9CA3AF']
 
 function Reportes() {
-  const [historial, setHistorial]         = useState([])
-  const [loading, setLoading]             = useState(true)
-  const [descargando, setDescargando]     = useState(null)
-  const [comparativa, setComparativa]     = useState(null)
-  const [loadingComp, setLoadingComp]     = useState(false)
-  const [selId1, setSelId1]               = useState('')
-  const [selId2, setSelId2]               = useState('')
+  const { user } = useAuth()
+  const [historial, setHistorial]     = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [descargando, setDescargando] = useState(null)
+  const [comparativa, setComparativa] = useState(null)
+  const [loadingComp, setLoadingComp] = useState(false)
+  const [selId1, setSelId1]           = useState('')
+  const [selId2, setSelId2]           = useState('')
 
-  const token = () => localStorage.getItem('access_token')
+  const esAdmin = user?.rol === 'admin'
+  const token   = () => localStorage.getItem('access_token')
 
   useEffect(() => {
     axios.get(`${API_URL}/operaciones/historial/`, {
@@ -83,9 +86,22 @@ function Reportes() {
           <div>
             <h2 className={styles.headerTitle}>Reportes y Exportaciones</h2>
             <p className={styles.headerDesc}>
-              Historial de importaciones, exportación de datos y comparativa entre períodos
+              {esAdmin
+                ? 'Vista global — historial de todas las importaciones del sistema'
+                : 'Historial de importaciones, exportación de datos y comparativa entre períodos'
+              }
             </p>
           </div>
+          {esAdmin && (
+            <div style={{
+              marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+              borderRadius: 10, padding: '6px 14px', flexShrink: 0
+            }}>
+              <span>👑</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#B45309' }}>Vista Admin</span>
+            </div>
+          )}
         </div>
 
         {/* Historial */}
@@ -93,7 +109,9 @@ function Reportes() {
           <div className={styles.cardHeader}>
             <div>
               <h3 className={styles.cardTitle}>🕒 Historial de Importaciones</h3>
-              <p className={styles.cardSub}>Todas tus importaciones realizadas</p>
+              <p className={styles.cardSub}>
+                {esAdmin ? 'Todas las importaciones del sistema' : 'Todas tus importaciones realizadas'}
+              </p>
             </div>
             <span className={styles.badge}>{historial.length} importaciones</span>
           </div>
@@ -109,6 +127,7 @@ function Reportes() {
                   <tr>
                     <th>#</th>
                     <th>Fecha</th>
+                    {esAdmin && <th>Usuario</th>}
                     <th>Total</th>
                     <th>Recategorizados</th>
                     <th>Sin Cambios</th>
@@ -122,6 +141,12 @@ function Reportes() {
                     <tr key={imp.id}>
                       <td className={styles.tdIdx}>{historial.length - i}</td>
                       <td className={styles.tdFecha}>{imp.fecha}</td>
+                      {esAdmin && (
+                        <td>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#0B1120' }}>{imp.usuario}</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF' }}>{imp.email}</div>
+                        </td>
+                      )}
                       <td className={styles.tdNum}>{imp.total_registros.toLocaleString()}</td>
                       <td><span className={styles.badgeGreen}>{imp.recategorizados.toLocaleString()}</span></td>
                       <td className={styles.tdNum}>{imp.sin_cambios.toLocaleString()}</td>
@@ -156,15 +181,12 @@ function Reportes() {
           <div className={styles.comparativaSelects}>
             <div className={styles.selectGroup}>
               <label className={styles.selectLabel}>Período 1</label>
-              <select
-                className={styles.select}
-                value={selId1}
-                onChange={e => { setSelId1(e.target.value); setComparativa(null) }}
-              >
+              <select className={styles.select} value={selId1}
+                onChange={e => { setSelId1(e.target.value); setComparativa(null) }}>
                 <option value="">Seleccionar importación...</option>
                 {historial.map((imp, i) => (
                   <option key={imp.id} value={imp.id}>
-                    #{historial.length - i} — {imp.fecha} ({imp.total_registros.toLocaleString()} registros)
+                    #{historial.length - i} — {imp.fecha}{esAdmin ? ` (${imp.usuario})` : ''} ({imp.total_registros.toLocaleString()} registros)
                   </option>
                 ))}
               </select>
@@ -174,25 +196,19 @@ function Reportes() {
 
             <div className={styles.selectGroup}>
               <label className={styles.selectLabel}>Período 2</label>
-              <select
-                className={styles.select}
-                value={selId2}
-                onChange={e => { setSelId2(e.target.value); setComparativa(null) }}
-              >
+              <select className={styles.select} value={selId2}
+                onChange={e => { setSelId2(e.target.value); setComparativa(null) }}>
                 <option value="">Seleccionar importación...</option>
                 {historial.map((imp, i) => (
                   <option key={imp.id} value={imp.id}>
-                    #{historial.length - i} — {imp.fecha} ({imp.total_registros.toLocaleString()} registros)
+                    #{historial.length - i} — {imp.fecha}{esAdmin ? ` (${imp.usuario})` : ''} ({imp.total_registros.toLocaleString()} registros)
                   </option>
                 ))}
               </select>
             </div>
 
-            <button
-              className={styles.btnComparar}
-              onClick={verComparativa}
-              disabled={!selId1 || !selId2 || selId1 === selId2 || loadingComp}
-            >
+            <button className={styles.btnComparar} onClick={verComparativa}
+              disabled={!selId1 || !selId2 || selId1 === selId2 || loadingComp}>
               {loadingComp ? <><span className={styles.spinner} /> Cargando...</> : '📊 Comparar'}
             </button>
           </div>
@@ -203,8 +219,6 @@ function Reportes() {
 
           {comparativa && (
             <div className={styles.comparativaResultado}>
-
-              {/* KPIs comparados */}
               <div className={styles.kpiGrid}>
                 {[
                   { label: 'Total Registros', k: 'total_registros' },
@@ -238,7 +252,6 @@ function Reportes() {
                 })}
               </div>
 
-              {/* BarChart comparativo */}
               <div className={styles.chartWrap}>
                 <h4 className={styles.chartTitle}>Comparación visual</h4>
                 <ResponsiveContainer width="100%" height={280}>
@@ -254,13 +267,10 @@ function Reportes() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Distribución tarifaria comparada */}
               <div className={styles.distGrid}>
                 {[comparativa.periodo1, comparativa.periodo2].map((p, pi) => (
                   <div key={pi} className={styles.distCard}>
-                    <h4 className={styles.distTitle}>
-                      Distribución tarifaria — {p.fecha}
-                    </h4>
+                    <h4 className={styles.distTitle}>Distribución tarifaria — {p.fecha}</h4>
                     <div className={styles.distList}>
                       {p.distribucion.map((d, i) => (
                         <div key={i} className={styles.distItem}>
