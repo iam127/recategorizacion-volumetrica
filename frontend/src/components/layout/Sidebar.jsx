@@ -60,12 +60,10 @@ function Sidebar() {
   }
 
   const adminLinks = [
-    { to: '/dashboard', label: 'Dashboard', icon: icons.dashboard },
-    { to: '/clientes', label: 'Clientes', icon: icons.clientes },
-    { to: '/reportes', label: 'Reportes', icon: icons.reportes },
-    { to: '/usuarios', label: 'Usuarios', icon: icons.usuarios },
-    { to: '/configuracion', label: 'Configuración', icon: icons.config },
-    { to: '/operaciones', label: 'Operaciones', icon: icons.operaciones },
+    { to: '/dashboard',    label: 'Dashboard',    icon: icons.dashboard },
+    { to: '/reportes',     label: 'Reportes',     icon: icons.reportes },
+    { to: '/usuarios',     label: 'Usuarios',     icon: icons.usuarios },
+    { to: '/configuracion',label: 'Configuración',icon: icons.config },
   ]
 
   const userLinks = [

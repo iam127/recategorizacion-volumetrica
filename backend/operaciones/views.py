@@ -17,26 +17,16 @@ class ImportarExcelView(APIView):
 
     def post(self, request):
         archivos_lectura     = request.FILES.getlist("archivos_lectura")
-        archivos_facturacion = request.FILES.getlist("archivos_facturacion")  # opcional
+        archivos_facturacion = request.FILES.getlist("archivos_facturacion")
 
         if not archivos_lectura:
-            return Response(
-                {"error": "Se requiere al menos un archivo de lecturas"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Se requiere al menos un archivo de lecturas"}, status=status.HTTP_400_BAD_REQUEST)
         if len(archivos_lectura) > 7:
-            return Response(
-                {"error": "Máximo 7 archivos de lecturas permitidos"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Máximo 7 archivos de lecturas permitidos"}, status=status.HTTP_400_BAD_REQUEST)
         if len(archivos_facturacion) > 7:
-            return Response(
-                {"error": "Máximo 7 archivos de facturación permitidos"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Máximo 7 archivos de facturación permitidos"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Cargar archivos de lecturas
             dfs_lectura     = []
             dfs_facturacion = []
             for archivo in archivos_lectura:
@@ -48,7 +38,6 @@ class ImportarExcelView(APIView):
             df_facturacion = pd.concat(dfs_facturacion, ignore_index=True)
             df_lectura, df_facturacion = limpiar_datos(df_lectura, df_facturacion)
 
-            # Cargar archivos de facturación externos (opcional)
             df_facturacion_externa = None
             if archivos_facturacion:
                 dfs_fact_ext = []
@@ -162,56 +151,173 @@ class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        ultima = ResultadoImportacion.objects.filter(usuario=request.user).first()
-        if not ultima:
+        es_admin = request.user.rol == 'admin'
+
+        if es_admin:
+            from django.contrib.auth import get_user_model
+            from django.db.models import Sum
+            User = get_user_model()
+
+            # Stats globales sumadas
+            globales = ResultadoImportacion.objects.aggregate(
+                total_importaciones  = Count('id'),
+                total_registros      = Sum('total_registros'),
+                total_recategorizados= Sum('recategorizados'),
+                total_sin_cambios    = Sum('sin_cambios'),
+                total_no_aptos       = Sum('no_aptos'),
+                total_anomalias      = Sum('anomalias'),
+            )
+
+            usuarios_activos = User.objects.filter(activo=True).count()
+
+            # Lista de usuarios con sus importaciones
+            usuarios_lista = []
+            for u in User.objects.filter(activo=True).order_by('nombre'):
+                importaciones_usuario = list(
+                    ResultadoImportacion.objects.filter(usuario=u)
+                    .order_by('-fecha_importacion')
+                    .values('id', 'fecha_importacion', 'total_registros', 'recategorizados')
+                )
+                # Formatear fecha
+                from zoneinfo import ZoneInfo
+                for imp in importaciones_usuario:
+                    imp['fecha_str'] = imp['fecha_importacion'].astimezone(
+                        ZoneInfo('America/Lima')
+                    ).strftime("%d/%m/%Y %H:%M")
+                    del imp['fecha_importacion']
+
+                usuarios_lista.append({
+                    'id':                  u.id,
+                    'nombre':              u.nombre,
+                    'apellido':            u.apellido,
+                    'email':               u.email,
+                    'total_importaciones': len(importaciones_usuario),
+                    'importaciones':       importaciones_usuario,
+                })
+
+            # Importación seleccionada
+            importacion_id = request.query_params.get('importacion_id')
+            usuario_id     = request.query_params.get('usuario_id')
+
+            if importacion_id:
+                ultima = ResultadoImportacion.objects.filter(id=importacion_id).first()
+            elif usuario_id:
+                ultima = ResultadoImportacion.objects.filter(
+                    usuario_id=usuario_id
+                ).order_by('-fecha_importacion').first()
+            else:
+                ultima = ResultadoImportacion.objects.order_by('-fecha_importacion').first()
+
+            if not ultima:
+                return Response({
+                    "es_admin":            True,
+                    "globales":            globales,
+                    "usuarios_activos":    usuarios_activos,
+                    "usuarios_lista":      usuarios_lista,
+                    "total_clientes":      0,
+                    "recategorizados":     0,
+                    "sin_cambios":         0,
+                    "no_aptos":            0,
+                    "anomalias":           0,
+                    "distribucion_categorias": [],
+                    "cambios_tarifarios":      [],
+                    "no_aptos_observaciones":  [],
+                    "anomalias_por_tipo":      [],
+                    "importador":          None,
+                    "importacion_id":      None,
+                })
+
+            dist = (
+                Cliente.objects.filter(importacion=ultima)
+                .values("tarifa_nueva")
+                .annotate(cantidad=Count("id"))
+            )
+            cambios = (
+                ResumenTarifario.objects.filter(importacion=ultima)
+                .values("tarifa_anterior", "tarifa_nueva", "cantidad_clientes", "porcentaje")
+            )
+            no_aptos_obs = (
+                ClienteNoApto.objects.filter(importacion=ultima)
+                .values("observacion")
+                .annotate(cantidad=Count("id"))
+                .order_by("-cantidad")[:6]
+            )
+            anomalias_tipo = (
+                Anomalia.objects.filter(importacion=ultima)
+                .values("tipo_anomalia")
+                .annotate(cantidad=Count("id"))
+                .order_by("-cantidad")[:6]
+            )
+
+            from zoneinfo import ZoneInfo
             return Response({
-                "total_clientes":          0,
-                "recategorizados":         0,
-                "sin_cambios":             0,
-                "no_aptos":                0,
-                "anomalias":               0,
-                "distribucion_categorias": [],
-                "cambios_tarifarios":      [],
-                "no_aptos_observaciones":  [],
-                "anomalias_por_tipo":      [],
+                "es_admin":                True,
+                "globales":                globales,
+                "usuarios_activos":        usuarios_activos,
+                "usuarios_lista":          usuarios_lista,
+                "importador":              f"{ultima.usuario.nombre} {ultima.usuario.apellido}" if ultima.usuario else "—",
+                "importador_id":           ultima.usuario.id if ultima.usuario else None,
+                "importacion_id":          ultima.id,
+                "importacion_fecha":       ultima.fecha_importacion.astimezone(ZoneInfo('America/Lima')).strftime("%d/%m/%Y %H:%M"),
+                "total_clientes":          ultima.total_registros,
+                "recategorizados":         ultima.recategorizados,
+                "sin_cambios":             ultima.sin_cambios,
+                "no_aptos":                ultima.no_aptos,
+                "anomalias":               ultima.anomalias,
+                "distribucion_categorias": list(dist),
+                "cambios_tarifarios":      list(cambios),
+                "no_aptos_observaciones":  list(no_aptos_obs),
+                "anomalias_por_tipo":      list(anomalias_tipo),
             })
 
-        dist = (
-            Cliente.objects.filter(importacion=ultima)
-            .values("tarifa_nueva")
-            .annotate(cantidad=Count("id"))
-        )
+        # Usuario normal
+        else:
+            ultima = ResultadoImportacion.objects.filter(usuario=request.user).first()
+            if not ultima:
+                return Response({
+                    "es_admin":                False,
+                    "total_clientes":          0,
+                    "recategorizados":         0,
+                    "sin_cambios":             0,
+                    "no_aptos":                0,
+                    "anomalias":               0,
+                    "distribucion_categorias": [],
+                    "cambios_tarifarios":      [],
+                    "no_aptos_observaciones":  [],
+                    "anomalias_por_tipo":      [],
+                })
 
-        cambios = (
-            ResumenTarifario.objects.filter(importacion=ultima)
-            .values("tarifa_anterior", "tarifa_nueva", "cantidad_clientes", "porcentaje")
-        )
+            dist = (
+                Cliente.objects.filter(importacion=ultima)
+                .values("tarifa_nueva").annotate(cantidad=Count("id"))
+            )
+            cambios = (
+                ResumenTarifario.objects.filter(importacion=ultima)
+                .values("tarifa_anterior", "tarifa_nueva", "cantidad_clientes", "porcentaje")
+            )
+            no_aptos_obs = (
+                ClienteNoApto.objects.filter(importacion=ultima)
+                .values("observacion").annotate(cantidad=Count("id"))
+                .order_by("-cantidad")[:6]
+            )
+            anomalias_tipo = (
+                Anomalia.objects.filter(importacion=ultima)
+                .values("tipo_anomalia").annotate(cantidad=Count("id"))
+                .order_by("-cantidad")[:6]
+            )
 
-        no_aptos_obs = (
-            ClienteNoApto.objects.filter(importacion=ultima)
-            .values("observacion")
-            .annotate(cantidad=Count("id"))
-            .order_by("-cantidad")[:6]
-        )
-
-        anomalias_tipo = (
-            Anomalia.objects.filter(importacion=ultima)
-            .values("tipo_anomalia")
-            .annotate(cantidad=Count("id"))
-            .order_by("-cantidad")[:6]
-        )
-
-        return Response({
-            "total_clientes":          ultima.total_registros,
-            "recategorizados":         ultima.recategorizados,
-            "sin_cambios":             ultima.sin_cambios,
-            "no_aptos":                ultima.no_aptos,
-            "anomalias":               ultima.anomalias,
-            "distribucion_categorias": list(dist),
-            "cambios_tarifarios":      list(cambios),
-            "no_aptos_observaciones":  list(no_aptos_obs),
-            "anomalias_por_tipo":      list(anomalias_tipo),
-        })
+            return Response({
+                "es_admin":                False,
+                "total_clientes":          ultima.total_registros,
+                "recategorizados":         ultima.recategorizados,
+                "sin_cambios":             ultima.sin_cambios,
+                "no_aptos":                ultima.no_aptos,
+                "anomalias":               ultima.anomalias,
+                "distribucion_categorias": list(dist),
+                "cambios_tarifarios":      list(cambios),
+                "no_aptos_observaciones":  list(no_aptos_obs),
+                "anomalias_por_tipo":      list(anomalias_tipo),
+            })
 
 
 class ClientesListView(APIView):
@@ -261,19 +367,33 @@ class HistorialImportacionesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        importaciones = ResultadoImportacion.objects.filter(usuario=request.user)
-        data = [{
-            "id":               imp.id,
-            "fecha": imp.fecha_importacion.astimezone(
-                __import__('zoneinfo').ZoneInfo('America/Lima')
-            ).strftime("%d/%m/%Y %H:%M"),
-            "total_registros":  imp.total_registros,
-            "procesados":       imp.procesados,
-            "recategorizados":  imp.recategorizados,
-            "sin_cambios":      imp.sin_cambios,
-            "no_aptos":         imp.no_aptos,
-            "anomalias":        imp.anomalias,
-        } for imp in importaciones]
+        es_admin = request.user.rol == 'admin'
+
+        if es_admin:
+            importaciones = ResultadoImportacion.objects.order_by('-fecha_importacion')
+        else:
+            importaciones = ResultadoImportacion.objects.filter(usuario=request.user)
+
+        data = []
+        for imp in importaciones:
+            item = {
+                "id":              imp.id,
+                "fecha": imp.fecha_importacion.astimezone(
+                    __import__('zoneinfo').ZoneInfo('America/Lima')
+                ).strftime("%d/%m/%Y %H:%M"),
+                "total_registros": imp.total_registros,
+                "procesados":      imp.procesados,
+                "recategorizados": imp.recategorizados,
+                "sin_cambios":     imp.sin_cambios,
+                "no_aptos":        imp.no_aptos,
+                "anomalias":       imp.anomalias,
+            }
+            # Admin ve quién hizo la importación
+            if es_admin:
+                item["usuario"] = f"{imp.usuario.nombre} {imp.usuario.apellido}" if imp.usuario else "Usuario eliminado"
+                item["email"]   = imp.usuario.email if imp.usuario else "—"
+            data.append(item)
+
         return Response(data)
 
 
@@ -290,10 +410,17 @@ class ExportarExcelView(APIView):
         importacion_id = request.query_params.get("importacion_id")
 
         if importacion_id:
-            try:
-                imp = ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
-            except ResultadoImportacion.DoesNotExist:
-                return Response({"error": "Importación no encontrada"}, status=404)
+            # Admin puede exportar cualquier importación, usuario solo las suyas
+            if request.user.rol == 'admin':
+                try:
+                    imp = ResultadoImportacion.objects.get(id=importacion_id)
+                except ResultadoImportacion.DoesNotExist:
+                    return Response({"error": "Importación no encontrada"}, status=404)
+            else:
+                try:
+                    imp = ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
+                except ResultadoImportacion.DoesNotExist:
+                    return Response({"error": "Importación no encontrada"}, status=404)
         else:
             imp = ResultadoImportacion.objects.filter(usuario=request.user).first()
             if not imp:
@@ -520,8 +647,13 @@ class ComparativaView(APIView):
             return Response({"error": "Se requieren id1 e id2"}, status=400)
 
         try:
-            imp1 = ResultadoImportacion.objects.get(id=id1, usuario=request.user)
-            imp2 = ResultadoImportacion.objects.get(id=id2, usuario=request.user)
+            # Admin puede comparar cualquier importación
+            if request.user.rol == 'admin':
+                imp1 = ResultadoImportacion.objects.get(id=id1)
+                imp2 = ResultadoImportacion.objects.get(id=id2)
+            else:
+                imp1 = ResultadoImportacion.objects.get(id=id1, usuario=request.user)
+                imp2 = ResultadoImportacion.objects.get(id=id2, usuario=request.user)
         except ResultadoImportacion.DoesNotExist:
             return Response({"error": "Importación no encontrada"}, status=404)
 

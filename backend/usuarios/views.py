@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from .serializers import RegisterSerializer, UsuarioSerializer, UpdatePerfilSerializer
+from operaciones.models import ResultadoImportacion
 
 
 @api_view(['POST'])
@@ -101,3 +102,56 @@ def cambiar_password(request):
     user.set_password(new_password)
     user.save()
     return Response({'message': 'Contraseña actualizada correctamente'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def lista_usuarios(request):
+    if request.user.rol != 'admin':
+        return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    usuarios = User.objects.all().order_by('-fecha_creacion')
+
+    data = []
+    for u in usuarios:
+        total_importaciones = ResultadoImportacion.objects.filter(usuario=u).count()
+        data.append({
+            'id':                  u.id,
+            'nombre':              u.nombre,
+            'apellido':            u.apellido,
+            'email':               u.email,
+            'rol':                 u.rol,
+            'is_active':           u.activo,
+            'total_importaciones': total_importaciones,
+        })
+
+    return Response(data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def toggle_usuario(request, pk):
+    if request.user.rol != 'admin':
+        return Response({'error': 'No autorizado'}, status=status.HTTP_403_FORBIDDEN)
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    try:
+        usuario = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+    if usuario == request.user:
+        return Response({'error': 'No puedes desactivar tu propia cuenta'}, status=status.HTTP_400_BAD_REQUEST)
+
+    usuario.activo = not usuario.activo
+    usuario.save(update_fields=['activo'])
+
+    return Response({
+        'id':        usuario.id,
+        'is_active': usuario.activo,
+        'message':   f'Usuario {"activado" if usuario.activo else "desactivado"} correctamente'
+    })
