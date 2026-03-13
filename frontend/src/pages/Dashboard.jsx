@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import Layout from '../components/layout/Layout'
-import axios from 'axios'
+import api from '../services/axiosInstance'
 import styles from './Dashboard.module.css'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  PieChart, Pie, Cell, ResponsiveContainer
+  PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, Legend,
 } from 'recharts'
 
-const API_URL = 'http://localhost:8000/api'
 const COLORS  = ['#1e3a5f', '#2e75b6', '#9CA3AF']
 const TARIFA_COLORS = {
   'REG-A1-CO': '#1e3a5f',
@@ -33,69 +32,170 @@ function StatCard({ label, sub, value, icon, color }) {
   )
 }
 
+// ── Selector de estilo compacto ───────────────────────────────────────────────
+function FilterSelect({ label, value, onChange, options, placeholder }) {
+  return (
+    <div style={{ flex: 1, minWidth: 160 }}>
+      <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.5px' }}>
+        {label}
+      </p>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          width: '100%', padding: '9px 12px', borderRadius: 10,
+          border: `1px solid ${value ? '#2e75b6' : '#E5E7EB'}`,
+          fontSize: 13, fontFamily: 'DM Sans, sans-serif',
+          outline: 'none', cursor: 'pointer', color: '#374151',
+          background: value ? '#EFF6FF' : '#fff',
+          transition: 'border .2s, background .2s',
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o, i) => (
+          <option key={i} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 function Dashboard() {
   const { user } = useAuth()
-  const [stats, setStats]           = useState(null)
-  const [loading, setLoading]       = useState(true)
-  const [loadingSel, setLoadingSel] = useState(false)
-  const [tabCuadro3, setTabCuadro3] = useState('todos')
-  const [usuarioSel, setUsuarioSel] = useState('')
+
+  // ── Estado principal ──────────────────────────────────────────────────────
+  const [stats,       setStats]       = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [loadingSel,  setLoadingSel]  = useState(false)
+  const [tabCuadro3,  setTabCuadro3]  = useState('todos')
+
+  // Selectores admin
+  const [usuarioSel,    setUsuarioSel]    = useState('')
   const [importacionSel, setImportacionSel] = useState('')
+
+  // ── Estado de filtros (solo usuario normal) ───────────────────────────────
+  const [filtrosOpciones, setFiltrosOpciones] = useState({ porciones: [], periodos: [] })
+  const [filtroPorcion,   setFiltroPorcion]   = useState('')
+  const [filtroDesde,     setFiltroDesde]     = useState('')
+  const [filtroHasta,     setFiltroHasta]     = useState('')
+  const [filtroStats,     setFiltroStats]     = useState(null)   // null = sin filtro activo
+  const [loadingFiltro,   setLoadingFiltro]   = useState(false)
+  const [importacionId,   setImportacionId]   = useState(null)
 
   const esAdmin = user?.rol === 'admin'
 
+  // ── Fetch stats principal ─────────────────────────────────────────────────
   const fetchStats = async (params = {}) => {
-    const token = localStorage.getItem('access_token')
-    const res = await axios.get(`${API_URL}/operaciones/dashboard/stats/`, {
-      headers: { Authorization: `Bearer ${token}` },
-      params,
-    })
+    const res = await api.get('/operaciones/dashboard/stats/', { params })
     setStats(res.data)
+    return res.data
   }
 
-  useEffect(() => {
-    fetchStats().finally(() => setLoading(false))
+  // ── Fetch opciones de filtros (porciones + periodos disponibles) ──────────
+  const fetchFiltrosOpciones = useCallback(async (impId) => {
+    const params = impId ? { importacion_id: impId } : {}
+    try {
+      const res = await api.get('/operaciones/dashboard/filtros/', { params })
+      setFiltrosOpciones({ porciones: res.data.porciones, periodos: res.data.periodos })
+    } catch {
+      // silencioso — si no hay datos simplemente no hay opciones
+    }
   }, [])
 
+  // ── Fetch stats filtradas ─────────────────────────────────────────────────
+  const fetchFiltroStats = useCallback(async (porcion, desde, hasta, impId) => {
+    if (!porcion && !desde && !hasta) {
+      setFiltroStats(null)
+      return
+    }
+    setLoadingFiltro(true)
+    const params = {}
+    if (impId)   params.importacion_id = impId
+    if (porcion) params.porcion        = porcion
+    if (desde)   params.fecha_desde    = desde
+    if (hasta)   params.fecha_hasta    = hasta
+    try {
+      const res = await api.get('/operaciones/dashboard/filtros/', { params })
+      setFiltroStats(res.data.stats)
+    } catch {
+      setFiltroStats(null)
+    } finally {
+      setLoadingFiltro(false)
+    }
+  }, [])
+
+  // ── Efecto inicial ────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchStats().then(data => {
+      if (!esAdmin && data?.importacion_id) {
+        setImportacionId(data.importacion_id)
+        fetchFiltrosOpciones(data.importacion_id)
+      }
+    }).finally(() => setLoading(false))
+  }, [])
+
+  // ── Handlers admin ────────────────────────────────────────────────────────
   const handleUsuarioChange = async (e) => {
     const id = e.target.value
     setUsuarioSel(id)
     setImportacionSel('')
     setLoadingSel(true)
-    try {
-      await fetchStats(id ? { usuario_id: id } : {})
-    } finally {
-      setLoadingSel(false)
-    }
+    try { await fetchStats(id ? { usuario_id: id } : {}) }
+    finally { setLoadingSel(false) }
   }
 
   const handleImportacionChange = async (e) => {
     const id = e.target.value
     setImportacionSel(id)
     setLoadingSel(true)
-    try {
-      await fetchStats(id ? { importacion_id: id } : { usuario_id: usuarioSel })
-    } finally {
-      setLoadingSel(false)
-    }
+    try { await fetchStats(id ? { importacion_id: id } : { usuario_id: usuarioSel }) }
+    finally { setLoadingSel(false) }
   }
 
-  const total      = stats?.total_clientes  || 0
-  const recat      = stats?.recategorizados || 0
-  const sinCambios = stats?.sin_cambios     || 0
-  const noAptos    = stats?.no_aptos        || 0
-  const anomalias  = stats?.anomalias       || 0
-  const globales   = stats?.globales        || {}
+  // ── Handlers filtros usuario ──────────────────────────────────────────────
+  const handleFiltroPorcion = (val) => {
+    setFiltroPorcion(val)
+    fetchFiltroStats(val, filtroDesde, filtroHasta, importacionId)
+  }
 
-  const pieData = stats?.distribucion_categorias?.map(d => ({
+  const handleFiltroDesde = (val) => {
+    setFiltroDesde(val)
+    fetchFiltroStats(filtroPorcion, val, filtroHasta, importacionId)
+  }
+
+  const handleFiltroHasta = (val) => {
+    setFiltroHasta(val)
+    fetchFiltroStats(filtroPorcion, filtroDesde, val, importacionId)
+  }
+
+  const limpiarFiltros = () => {
+    setFiltroPorcion('')
+    setFiltroDesde('')
+    setFiltroHasta('')
+    setFiltroStats(null)
+  }
+
+  const hayFiltros = filtroPorcion || filtroDesde || filtroHasta
+
+  // ── Datos para render ─────────────────────────────────────────────────────
+  const activeStats = filtroStats || stats   // si hay filtro activo, usarlo
+
+  const total      = activeStats?.total_clientes  || 0
+  const recat      = activeStats?.recategorizados || 0
+  const sinCambios = activeStats?.sin_cambios     || 0
+  const noAptos    = activeStats?.no_aptos        || 0
+  const anomalias  = stats?.anomalias             || 0   // anomalías siempre del total
+  const globales   = stats?.globales              || {}
+
+  const pieData = activeStats?.distribucion_categorias?.map(d => ({
     name: d.tarifa_nueva, value: d.cantidad,
   })) || []
 
-  const barData = stats?.cambios_tarifarios
+  const barData = activeStats?.cambios_tarifarios
     ?.filter(d => d.tarifa_anterior !== d.tarifa_nueva)
     ?.map(d => ({ name: `${d.tarifa_anterior} → ${d.tarifa_nueva}`, value: d.cantidad_clientes })) || []
 
-  const cuadro3Data     = stats?.cambios_tarifarios || []
+  const cuadro3Data     = activeStats?.cambios_tarifarios || []
   const cuadro3Filtrado = tabCuadro3 === 'todos'
     ? cuadro3Data
     : cuadro3Data.filter(d => d.tarifa_anterior !== d.tarifa_nueva)
@@ -103,16 +203,36 @@ function Dashboard() {
   const noAptosObs    = stats?.no_aptos_observaciones || []
   const anomaliasTipo = stats?.anomalias_por_tipo     || []
 
-  // Importaciones del usuario seleccionado
+  // Gráfica de consumo mensual (solo visible con filtro activo)
+  const consumoPorPeriodo = filtroStats?.consumo_por_periodo?.map(d => ({
+    periodo: d.periodo,
+    consumo: parseFloat(d.consumo_total?.toFixed(1) || 0),
+  })) || []
+
+  // Importaciones del usuario seleccionado (admin)
   const importacionesUsuario = usuarioSel
     ? (stats?.usuarios_lista?.find(u => String(u.id) === String(usuarioSel))?.importaciones || [])
     : []
+
+  // Opciones para los selects de fecha
+  const opcionesPeriodo = filtrosOpciones.periodos.map(p => ({ value: p, label: p }))
+  const opcionesPorcion = filtrosOpciones.porciones.map(p => ({ value: p, label: `Porción ${p}` }))
+
+  // Periodos para "hasta" (solo los >= desde seleccionado)
+  const opcionesHasta = filtroDesde
+    ? opcionesPeriodo.filter(o => o.value >= filtroDesde)
+    : opcionesPeriodo
+
+  // Periodos para "desde" (solo los <= hasta seleccionado)
+  const opcionesDesde = filtroHasta
+    ? opcionesPeriodo.filter(o => o.value <= filtroHasta)
+    : opcionesPeriodo
 
   return (
     <Layout title="Dashboard">
       <div className={styles.page}>
 
-        {/* Bienvenida */}
+        {/* ── Bienvenida ── */}
         <div className={styles.welcome}>
           <div>
             <h2 className={styles.welcomeTitle}>Bienvenido, {user?.nombre} 👋</h2>
@@ -141,16 +261,16 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Stats globales + selectores — solo admin */}
+        {/* ── Stats globales + selectores — solo admin ── */}
         {esAdmin && !loading && (
           <>
-            {/* 4 tarjetas globales */}
+            {/* 4 tarjetas globales oscuras */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
               {[
-                { label: 'TOTAL IMPORTACIONES',  value: globales.total_importaciones ?? 0,                              icon: '📥', color: '#F59E0B' },
-                { label: 'USUARIOS ACTIVOS',      value: stats.usuarios_activos ?? 0,                                   icon: '👥', color: '#10B981' },
-                { label: 'TOTAL REGISTROS',       value: (globales.total_registros ?? 0).toLocaleString(),              icon: '📊', color: '#2e75b6' },
-                { label: 'TOTAL RECATEGORIZADOS', value: (globales.total_recategorizados ?? 0).toLocaleString(),        icon: '✅', color: '#10B981' },
+                { label: 'TOTAL IMPORTACIONES',  value: globales.total_importaciones ?? 0,                       icon: '📥', color: '#F59E0B' },
+                { label: 'USUARIOS ACTIVOS',      value: stats.usuarios_activos ?? 0,                             icon: '👥', color: '#10B981' },
+                { label: 'TOTAL REGISTROS',       value: (globales.total_registros ?? 0).toLocaleString(),        icon: '📊', color: '#2e75b6' },
+                { label: 'TOTAL RECATEGORIZADOS', value: (globales.total_recategorizados ?? 0).toLocaleString(),  icon: '✅', color: '#10B981' },
               ].map((s, i) => (
                 <div key={i} className={styles.statCard} style={{ background: 'linear-gradient(135deg,#0B1120,#1e3a5f)' }}>
                   <div className={styles.statTop}>
@@ -167,7 +287,7 @@ function Dashboard() {
               ))}
             </div>
 
-            {/* Selectores */}
+            {/* Selectores usuario / importación */}
             <div style={{
               background: '#fff', border: '1px solid #F0F0F0',
               borderRadius: 14, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14
@@ -175,9 +295,7 @@ function Dashboard() {
               <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>
                 📋 Ver estadísticas detalladas
               </p>
-
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                {/* Selector 1 — Usuario */}
                 <div style={{ flex: 1 }}>
                   <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>Usuario</p>
                   <select
@@ -198,7 +316,6 @@ function Dashboard() {
                   </select>
                 </div>
 
-                {/* Selector 2 — Importación (solo si hay usuario seleccionado con más de 1 importación) */}
                 {usuarioSel && importacionesUsuario.length > 1 && (
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>Importación</p>
@@ -239,21 +356,158 @@ function Dashboard() {
           </>
         )}
 
-        {/* Stats principales */}
+        {/* ── Stats principales ── */}
         <div className={styles.statsGrid}>
-          <StatCard label="TOTAL CLIENTES"  sub="Base activa"
+          <StatCard label="TOTAL CLIENTES"  sub={hayFiltros ? '🔍 Filtrado' : 'Base activa'}
             value={loading ? '...' : total.toLocaleString()}      icon="👥" color="#2e75b6" />
           <StatCard label="RECATEGORIZADOS" sub={`${total > 0 ? ((recat/total)*100).toFixed(1) : 0}% del total`}
             value={loading ? '...' : recat.toLocaleString()}       icon="📊" color="#10B981" />
           <StatCard label="SIN CAMBIOS"     sub={`${total > 0 ? ((sinCambios/total)*100).toFixed(1) : 0}% del total`}
             value={loading ? '...' : sinCambios.toLocaleString()}  icon="➖" color="#6B7280" />
-          <StatCard label="NO APTOS"        sub="No cumplen criterios"
+          <StatCard label="NO APTOS"        sub={hayFiltros ? 'En porción seleccionada' : 'No cumplen criterios'}
             value={loading ? '...' : noAptos.toLocaleString()}     icon="⚠️" color="#F59E0B" />
           <StatCard label="ANOMALÍAS"       sub="Detectadas en lecturas"
             value={loading ? '...' : anomalias.toLocaleString()}   icon="🔍" color="#EF4444" />
         </div>
 
-        {/* Charts fila 1 */}
+        {/* ── Panel de filtros — solo usuario normal ── */}
+        {!esAdmin && !loading && (
+          <div style={{
+            background: '#fff',
+            border: `1px solid ${hayFiltros ? '#2e75b6' : '#F0F0F0'}`,
+            borderRadius: 14, padding: '18px 24px',
+            transition: 'border .25s',
+          }}>
+            {/* Header del panel */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🔎</span>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>
+                  Análisis por Porción y Período
+                </p>
+                {hayFiltros && (
+                  <span style={{
+                    background: '#EFF6FF', color: '#2e75b6', fontSize: 11,
+                    fontWeight: 700, padding: '2px 10px', borderRadius: 20, border: '1px solid #BFDBFE'
+                  }}>
+                    FILTRO ACTIVO
+                  </span>
+                )}
+              </div>
+              {hayFiltros && (
+                <button
+                  onClick={limpiarFiltros}
+                  style={{
+                    background: 'none', border: '1px solid #E5E7EB', borderRadius: 8,
+                    padding: '5px 12px', fontSize: 12, color: '#6B7280',
+                    cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  ✕ Limpiar filtros
+                </button>
+              )}
+            </div>
+
+            {/* Controles */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <FilterSelect
+                label="Porción"
+                value={filtroPorcion}
+                onChange={handleFiltroPorcion}
+                options={opcionesPorcion}
+                placeholder="— Todas las porciones —"
+              />
+              <FilterSelect
+                label="Desde (mes)"
+                value={filtroDesde}
+                onChange={handleFiltroDesde}
+                options={opcionesDesde}
+                placeholder="— Mes inicio —"
+              />
+              <FilterSelect
+                label="Hasta (mes)"
+                value={filtroHasta}
+                onChange={handleFiltroHasta}
+                options={opcionesHasta}
+                placeholder="— Mes fin —"
+              />
+
+              {loadingFiltro && (
+                <div style={{ alignSelf: 'flex-end', paddingBottom: 10 }}>
+                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>Calculando...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Resumen del filtro activo */}
+            {hayFiltros && !loadingFiltro && filtroStats && (
+              <div style={{
+                marginTop: 14, padding: '10px 16px',
+                background: '#F0F7FF', borderRadius: 10, border: '1px solid #BFDBFE',
+                display: 'flex', gap: 24, flexWrap: 'wrap',
+              }}>
+                {[
+                  { label: 'Clientes',         value: filtroStats.total_clientes.toLocaleString(),   color: '#2e75b6' },
+                  { label: 'Recategorizados',  value: filtroStats.recategorizados.toLocaleString(),  color: '#10B981' },
+                  { label: 'Sin cambios',      value: filtroStats.sin_cambios.toLocaleString(),      color: '#6B7280' },
+                  { label: 'No aptos',         value: filtroStats.no_aptos.toLocaleString(),         color: '#F59E0B' },
+                ].map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#6B7280' }}>{s.label}:</span>
+                    <strong style={{ fontSize: 15, color: s.color }}>{s.value}</strong>
+                  </div>
+                ))}
+                {filtroPorcion && (
+                  <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 'auto' }}>
+                    📍 Porción <strong style={{ color: '#1e3a5f' }}>{filtroPorcion}</strong>
+                  </span>
+                )}
+                {(filtroDesde || filtroHasta) && (
+                  <span style={{ fontSize: 12, color: '#6B7280' }}>
+                    📅 {filtroDesde || '...'} → {filtroHasta || '...'}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Gráfica de consumo mensual (solo con filtro activo) ── */}
+        {!esAdmin && hayFiltros && !loadingFiltro && consumoPorPeriodo.length > 0 && (
+          <div className={styles.chartCard}>
+            <div className={styles.chartHeader}>
+              <div>
+                <h3 className={styles.chartTitle}>📈 Evolución de Consumo Mensual</h3>
+                <p className={styles.chartSub}>
+                  Consumo m³ por período
+                  {filtroPorcion ? ` — Porción ${filtroPorcion}` : ''}
+                  {filtroDesde || filtroHasta ? ` — ${filtroDesde || '...'} a ${filtroHasta || '...'}` : ''}
+                </p>
+              </div>
+              <span style={{
+                background: '#EFF6FF', color: '#2e75b6', fontSize: 11,
+                fontWeight: 700, padding: '3px 12px', borderRadius: 20, border: '1px solid #BFDBFE'
+              }}>
+                {consumoPorPeriodo.length} meses
+              </span>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={consumoPorPeriodo} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
+                <XAxis dataKey="periodo" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => v.toLocaleString()} />
+                <Tooltip formatter={v => [v.toLocaleString() + ' m³', 'Consumo']} />
+                <Line
+                  type="monotone" dataKey="consumo" stroke="#2e75b6"
+                  strokeWidth={2.5} dot={{ r: 5, fill: '#2e75b6' }} activeDot={{ r: 7 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* ── Charts fila 1 ── */}
         <div className={styles.chartsGrid}>
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
@@ -312,7 +566,7 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Cuadro 3 */}
+        {/* ── Cuadro 3 ── */}
         <div className={styles.chartCard}>
           <div className={styles.chartHeader}>
             <div>
@@ -340,8 +594,8 @@ function Dashboard() {
                     <tr key={i}>
                       <td><span className={styles.badge} style={{ background: TARIFA_COLORS[row.tarifa_anterior]+'20', color: TARIFA_COLORS[row.tarifa_anterior] }}>{row.tarifa_anterior}</span></td>
                       <td><span className={styles.badge} style={{ background: TARIFA_COLORS[row.tarifa_nueva]+'20',      color: TARIFA_COLORS[row.tarifa_nueva]      }}>{row.tarifa_nueva}</span></td>
-                      <td className={styles.tdNum}>{row.cantidad_clientes.toLocaleString()}</td>
-                      <td className={styles.tdNum}>{parseFloat(row.porcentaje).toFixed(2)}%</td>
+                      <td className={styles.tdNum}>{(row.cantidad_clientes ?? row.cantidad ?? 0).toLocaleString()}</td>
+                      <td className={styles.tdNum}>{parseFloat(row.porcentaje ?? 0).toFixed(2)}%</td>
                       <td>
                         {row.tarifa_anterior === row.tarifa_nueva
                           ? <span className={styles.badgeGray}>Sin cambio</span>
@@ -356,7 +610,7 @@ function Dashboard() {
           )}
         </div>
 
-        {/* Cuadro 4 y 5 */}
+        {/* ── Cuadro 4 y 5 ── */}
         <div className={styles.chartsGrid}>
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>

@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import Layout from '../components/layout/Layout'
-import axios from 'axios'
+import api from '../services/axiosInstance'
 import styles from './Configuracion.module.css'
-
-const API_URL = 'http://localhost:8000/api/auth'
 
 function Configuracion() {
   const { user, setUser, fotoPerfil, setFotoPerfil } = useAuth()
@@ -38,14 +36,11 @@ function Configuracion() {
   const [fotoPreview, setFotoPreview] = useState(fotoPerfil)
   const [fotoMsg, setFotoMsg] = useState({ type: '', text: '' })
 
-  const token = localStorage.getItem('access_token')
-
   useEffect(() => {
     const saved = localStorage.getItem('notificaciones')
     if (saved) setNotif(JSON.parse(saved))
   }, [])
 
-  // Sync fotoPreview con contexto
   useEffect(() => {
     setFotoPreview(fotoPerfil)
   }, [fotoPerfil])
@@ -56,9 +51,7 @@ function Configuracion() {
     setPerfilLoading(true)
     setPerfilMsg({ type: '', text: '' })
     try {
-      await axios.put(`${API_URL}/perfil/`, perfil, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      await api.put('/auth/perfil/', perfil)
       const storedUser = JSON.parse(localStorage.getItem('user'))
       const updatedUser = { ...storedUser, ...perfil }
       localStorage.setItem('user', JSON.stringify(updatedUser))
@@ -85,10 +78,10 @@ function Configuracion() {
     }
     setPassLoading(true)
     try {
-      await axios.post(`${API_URL}/cambiar-password/`, {
+      await api.post('/auth/cambiar-password/', {
         old_password: passwords.old_password,
         new_password: passwords.new_password,
-      }, { headers: { Authorization: `Bearer ${token}` } })
+      })
       setPassMsg({ type: 'success', text: 'Contraseña actualizada correctamente' })
       setPasswords({ old_password: '', new_password: '', confirm_password: '' })
     } catch (err) {
@@ -135,12 +128,12 @@ function Configuracion() {
     setFotoPerfil(null)
     localStorage.removeItem(`foto_perfil_${user.email}`)
   }
-  
+
   const tabs = [
-    { id: 'perfil', label: 'Editar Perfil', icon: '👤' },
-    { id: 'foto', label: 'Foto de Perfil', icon: '📷' },
-    { id: 'password', label: 'Contraseña', icon: '🔒' },
-    { id: 'notificaciones', label: 'Notificaciones', icon: '🔔' },
+    { id: 'perfil',         label: 'Editar Perfil',    icon: '👤' },
+    { id: 'foto',           label: 'Foto de Perfil',   icon: '📷' },
+    { id: 'password',       label: 'Contraseña',       icon: '🔒' },
+    { id: 'notificaciones', label: 'Notificaciones',   icon: '🔔' },
   ]
 
   return (
@@ -365,8 +358,8 @@ function Configuracion() {
                 <div className={styles.notifList}>
                   {[
                     { key: 'recategorizacion', label: 'Proceso de Recategorización', desc: 'Notificaciones cuando se completa un proceso de recategorización' },
-                    { key: 'reportes', label: 'Reportes Disponibles', desc: 'Avisos cuando hay nuevos reportes listos para descargar' },
-                    { key: 'sistema', label: 'Alertas del Sistema', desc: 'Notificaciones importantes sobre el funcionamiento del sistema' },
+                    { key: 'reportes',         label: 'Reportes Disponibles',        desc: 'Avisos cuando hay nuevos reportes listos para descargar' },
+                    { key: 'sistema',          label: 'Alertas del Sistema',         desc: 'Notificaciones importantes sobre el funcionamiento del sistema' },
                   ].map(item => (
                     <div key={item.key} className={styles.notifItem}>
                       <div className={styles.notifInfo}>
