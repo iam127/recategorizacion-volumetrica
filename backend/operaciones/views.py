@@ -3,10 +3,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser
 from rest_framework import status
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
 from .etl import cargar_excel, cargar_excel_facturacion, limpiar_datos, limpiar_facturacion_externa, ejecutar_recategorizacion
-from .models import ResultadoImportacion, Cliente, ResumenTarifario, ClienteNoApto, Anomalia
+from .models import ResultadoImportacion, Cliente, ResumenTarifario, ClienteNoApto, Anomalia, ConsumoMensual
 import pandas as pd
 import io
 
@@ -48,7 +48,7 @@ class ImportarExcelView(APIView):
                     pd.concat(dfs_fact_ext, ignore_index=True)
                 )
 
-            cuadro_2, cuadro_3, cuadro_4, cuadro_5 = ejecutar_recategorizacion(
+            cuadro_2, cuadro_3, cuadro_4, cuadro_5, df_mensual = ejecutar_recategorizacion(
                 df_lectura, df_facturacion, df_facturacion_externa
             )
 
@@ -124,6 +124,27 @@ class ImportarExcelView(APIView):
                     ))
                 Anomalia.objects.bulk_create(anomalias_bulk, batch_size=500)
 
+            clientes_map = {
+                c.cuenta_contrato: c
+                for c in Cliente.objects.filter(importacion=importacion)
+            }
+
+            consumo_bulk = []
+            for _, row in df_mensual.iterrows():
+                cuenta = str(row["Cuenta_contrato"])
+                consumo_bulk.append(ConsumoMensual(
+                    importacion     = importacion,
+                    cliente         = clientes_map.get(cuenta),
+                    cuenta_contrato = cuenta,
+                    instalacion     = str(row["Instalación"]),
+                    porcion         = str(row["Porcion"]) if pd.notna(row.get("Porcion")) else None,
+                    periodo         = str(row["Periodo"]),
+                    consumo         = float(row["Consumo_mes"] or 0),
+                    dias            = int(row["Dias_mes"] or 0),
+                    tarifa          = str(row["Tarifa_referencia"]) if pd.notna(row.get("Tarifa_referencia")) else None,
+                ))
+            ConsumoMensual.objects.bulk_create(consumo_bulk, batch_size=1000)
+
             return Response({
                 "total":                   total_clientes + no_aptos,
                 "procesados":              total_clientes,
@@ -154,170 +175,77 @@ class DashboardStatsView(APIView):
         es_admin = request.user.rol == 'admin'
 
         if es_admin:
-            from django.contrib.auth import get_user_model
-            from django.db.models import Sum
-            User = get_user_model()
-
-            # Stats globales sumadas
-            globales = ResultadoImportacion.objects.aggregate(
-                total_importaciones  = Count('id'),
-                total_registros      = Sum('total_registros'),
-                total_recategorizados= Sum('recategorizados'),
-                total_sin_cambios    = Sum('sin_cambios'),
-                total_no_aptos       = Sum('no_aptos'),
-                total_anomalias      = Sum('anomalias'),
-            )
-
-            usuarios_activos = User.objects.filter(activo=True).count()
-
-            # Lista de usuarios con sus importaciones
-            usuarios_lista = []
-            for u in User.objects.filter(activo=True).order_by('nombre'):
-                importaciones_usuario = list(
-                    ResultadoImportacion.objects.filter(usuario=u)
-                    .order_by('-fecha_importacion')
-                    .values('id', 'fecha_importacion', 'total_registros', 'recategorizados')
-                )
-                # Formatear fecha
-                from zoneinfo import ZoneInfo
-                for imp in importaciones_usuario:
-                    imp['fecha_str'] = imp['fecha_importacion'].astimezone(
-                        ZoneInfo('America/Lima')
-                    ).strftime("%d/%m/%Y %H:%M")
-                    del imp['fecha_importacion']
-
-                usuarios_lista.append({
-                    'id':                  u.id,
-                    'nombre':              u.nombre,
-                    'apellido':            u.apellido,
-                    'email':               u.email,
-                    'total_importaciones': len(importaciones_usuario),
-                    'importaciones':       importaciones_usuario,
-                })
-
-            # Importación seleccionada
-            importacion_id = request.query_params.get('importacion_id')
-            usuario_id     = request.query_params.get('usuario_id')
-
-            if importacion_id:
-                ultima = ResultadoImportacion.objects.filter(id=importacion_id).first()
-            elif usuario_id:
-                ultima = ResultadoImportacion.objects.filter(
-                    usuario_id=usuario_id
-                ).order_by('-fecha_importacion').first()
-            else:
-                ultima = ResultadoImportacion.objects.order_by('-fecha_importacion').first()
-
-            if not ultima:
-                return Response({
-                    "es_admin":            True,
-                    "globales":            globales,
-                    "usuarios_activos":    usuarios_activos,
-                    "usuarios_lista":      usuarios_lista,
-                    "total_clientes":      0,
-                    "recategorizados":     0,
-                    "sin_cambios":         0,
-                    "no_aptos":            0,
-                    "anomalias":           0,
-                    "distribucion_categorias": [],
-                    "cambios_tarifarios":      [],
-                    "no_aptos_observaciones":  [],
-                    "anomalias_por_tipo":      [],
-                    "importador":          None,
-                    "importacion_id":      None,
-                })
-
-            dist = (
-                Cliente.objects.filter(importacion=ultima)
-                .values("tarifa_nueva")
-                .annotate(cantidad=Count("id"))
-            )
-            cambios = (
-                ResumenTarifario.objects.filter(importacion=ultima)
-                .values("tarifa_anterior", "tarifa_nueva", "cantidad_clientes", "porcentaje")
-            )
-            no_aptos_obs = (
-                ClienteNoApto.objects.filter(importacion=ultima)
-                .values("observacion")
-                .annotate(cantidad=Count("id"))
-                .order_by("-cantidad")[:6]
-            )
-            anomalias_tipo = (
-                Anomalia.objects.filter(importacion=ultima)
-                .values("tipo_anomalia")
-                .annotate(cantidad=Count("id"))
-                .order_by("-cantidad")[:6]
-            )
-
-            from zoneinfo import ZoneInfo
-            return Response({
-                "es_admin":                True,
-                "globales":                globales,
-                "usuarios_activos":        usuarios_activos,
-                "usuarios_lista":          usuarios_lista,
-                "importador":              f"{ultima.usuario.nombre} {ultima.usuario.apellido}" if ultima.usuario else "—",
-                "importador_id":           ultima.usuario.id if ultima.usuario else None,
-                "importacion_id":          ultima.id,
-                "importacion_fecha":       ultima.fecha_importacion.astimezone(ZoneInfo('America/Lima')).strftime("%d/%m/%Y %H:%M"),
-                "total_clientes":          ultima.total_registros,
-                "recategorizados":         ultima.recategorizados,
-                "sin_cambios":             ultima.sin_cambios,
-                "no_aptos":                ultima.no_aptos,
-                "anomalias":               ultima.anomalias,
-                "distribucion_categorias": list(dist),
-                "cambios_tarifarios":      list(cambios),
-                "no_aptos_observaciones":  list(no_aptos_obs),
-                "anomalias_por_tipo":      list(anomalias_tipo),
-            })
-
-        # Usuario normal
+            ultima = ResultadoImportacion.objects.order_by('-fecha_importacion').first()
         else:
             ultima = ResultadoImportacion.objects.filter(usuario=request.user).first()
-            if not ultima:
-                return Response({
-                    "es_admin":                False,
-                    "total_clientes":          0,
-                    "recategorizados":         0,
-                    "sin_cambios":             0,
-                    "no_aptos":                0,
-                    "anomalias":               0,
-                    "distribucion_categorias": [],
-                    "cambios_tarifarios":      [],
-                    "no_aptos_observaciones":  [],
-                    "anomalias_por_tipo":      [],
-                })
 
-            dist = (
-                Cliente.objects.filter(importacion=ultima)
-                .values("tarifa_nueva").annotate(cantidad=Count("id"))
-            )
-            cambios = (
-                ResumenTarifario.objects.filter(importacion=ultima)
-                .values("tarifa_anterior", "tarifa_nueva", "cantidad_clientes", "porcentaje")
-            )
-            no_aptos_obs = (
-                ClienteNoApto.objects.filter(importacion=ultima)
-                .values("observacion").annotate(cantidad=Count("id"))
-                .order_by("-cantidad")[:6]
-            )
-            anomalias_tipo = (
-                Anomalia.objects.filter(importacion=ultima)
-                .values("tipo_anomalia").annotate(cantidad=Count("id"))
-                .order_by("-cantidad")[:6]
-            )
-
+        if not ultima:
             return Response({
-                "es_admin":                False,
-                "total_clientes":          ultima.total_registros,
-                "recategorizados":         ultima.recategorizados,
-                "sin_cambios":             ultima.sin_cambios,
-                "no_aptos":                ultima.no_aptos,
-                "anomalias":               ultima.anomalias,
-                "distribucion_categorias": list(dist),
-                "cambios_tarifarios":      list(cambios),
-                "no_aptos_observaciones":  list(no_aptos_obs),
-                "anomalias_por_tipo":      list(anomalias_tipo),
+                "es_admin":                es_admin,
+                "total_clientes":          0,
+                "recategorizados":         0,
+                "sin_cambios":             0,
+                "no_aptos":                0,
+                "anomalias":               0,
+                "distribucion_categorias": [],
+                "cambios_tarifarios":      [],
+                "no_aptos_observaciones":  [],
+                "anomalias_por_tipo":      [],
+                "total_importaciones":     0,
+                "usuarios_activos":        0,
             })
+
+        dist = (
+            Cliente.objects.filter(importacion=ultima)
+            .values("tarifa_nueva")
+            .annotate(cantidad=Count("id"))
+        )
+
+        cambios = (
+            ResumenTarifario.objects.filter(importacion=ultima)
+            .values("tarifa_anterior", "tarifa_nueva", "cantidad_clientes", "porcentaje")
+        )
+
+        no_aptos_obs = (
+            ClienteNoApto.objects.filter(importacion=ultima)
+            .values("observacion")
+            .annotate(cantidad=Count("id"))
+            .order_by("-cantidad")[:6]
+        )
+
+        anomalias_tipo = (
+            Anomalia.objects.filter(importacion=ultima)
+            .values("tipo_anomalia")
+            .annotate(cantidad=Count("id"))
+            .order_by("-cantidad")[:6]
+        )
+
+        data = {
+            "es_admin":                es_admin,
+            "importacion_id":          ultima.id,
+            "total_clientes":          ultima.total_registros,
+            "recategorizados":         ultima.recategorizados,
+            "sin_cambios":             ultima.sin_cambios,
+            "no_aptos":                ultima.no_aptos,
+            "anomalias":               ultima.anomalias,
+            "distribucion_categorias": list(dist),
+            "cambios_tarifarios":      list(cambios),
+            "no_aptos_observaciones":  list(no_aptos_obs),
+            "anomalias_por_tipo":      list(anomalias_tipo),
+        }
+
+        if es_admin:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            data["total_importaciones"] = ResultadoImportacion.objects.count()
+            data["usuarios_activos"]    = User.objects.filter(activo=True).count()
+            # ── FIX: guard para usuario NULL ──
+            if ultima.usuario:
+                data["importador"] = f"{ultima.usuario.nombre} {ultima.usuario.apellido}"
+            else:
+                data["importador"] = "Usuario eliminado"
+
+        return Response(data)
 
 
 class ClientesListView(APIView):
@@ -326,19 +254,47 @@ class ClientesListView(APIView):
     def get(self, request):
         ultima = ResultadoImportacion.objects.filter(usuario=request.user).first()
         if not ultima:
-            return Response({"count": 0, "results": []})
+            return Response({"count": 0, "results": [], "porciones": [], "periodos": []})
 
-        search = request.query_params.get("search", "")
-        page   = int(request.query_params.get("page", 1))
-        size   = int(request.query_params.get("page_size", 10))
+        search      = request.query_params.get("search", "")
+        porcion     = request.query_params.get("porcion", "")
+        fecha_desde = request.query_params.get("fecha_desde", "")
+        fecha_hasta = request.query_params.get("fecha_hasta", "")
+        page        = int(request.query_params.get("page", 1))
+        size        = int(request.query_params.get("page_size", 10))
+
+        porciones_disponibles = list(
+            ConsumoMensual.objects.filter(importacion=ultima)
+            .exclude(porcion__isnull=True).exclude(porcion='')
+            .values_list('porcion', flat=True)
+            .distinct().order_by('porcion')
+        )
+        periodos_disponibles = list(
+            ConsumoMensual.objects.filter(importacion=ultima)
+            .values_list('periodo', flat=True)
+            .distinct().order_by('periodo')
+        )
 
         qs = Cliente.objects.filter(importacion=ultima)
+
         if search:
             qs = qs.filter(
                 Q(instalacion__icontains=search) |
                 Q(cuenta_contrato__icontains=search) |
                 Q(porcion__icontains=search)
             )
+
+        if porcion:
+            qs = qs.filter(porcion=porcion)
+
+        if fecha_desde or fecha_hasta:
+            cm_qs = ConsumoMensual.objects.filter(importacion=ultima)
+            if fecha_desde:
+                cm_qs = cm_qs.filter(periodo__gte=fecha_desde)
+            if fecha_hasta:
+                cm_qs = cm_qs.filter(periodo__lte=fecha_hasta)
+            cuentas_en_rango = cm_qs.values_list('cuenta_contrato', flat=True).distinct()
+            qs = qs.filter(cuenta_contrato__in=cuentas_en_rango)
 
         total    = qs.count()
         offset   = (page - 1) * size
@@ -351,7 +307,7 @@ class ClientesListView(APIView):
             "Total_dias_consumo":          round(c.total_dias_consumo, 2),
             "Total_consumo_facturado":     round(c.total_consumo, 2),
             "Tarifa_referencia":           c.tarifa_anterior,
-            "Porcion":                     c.porcion or "-",
+            "Porcon":                     c.porcion or "-",
             "Unidad_Predial":              c.unidad_predial or "-",
             "Promedio_diario":             round(c.promedio_diario, 4),
             "Promedio_mensual":            round(c.promedio_mensual, 2),
@@ -360,7 +316,7 @@ class ClientesListView(APIView):
             "Estado":                      c.estado,
         } for c in clientes]
 
-        return Response({"count": total, "results": results})
+        return Response({"count": total, "results": results, "porciones": porciones_disponibles, "periodos": periodos_disponibles})
 
 
 class HistorialImportacionesView(APIView):
@@ -388,10 +344,14 @@ class HistorialImportacionesView(APIView):
                 "no_aptos":        imp.no_aptos,
                 "anomalias":       imp.anomalias,
             }
-            # Admin ve quién hizo la importación
             if es_admin:
-                item["usuario"] = f"{imp.usuario.nombre} {imp.usuario.apellido}" if imp.usuario else "Usuario eliminado"
-                item["email"]   = imp.usuario.email if imp.usuario else "—"
+                # ── FIX: guard para importaciones con usuario eliminado/NULL ──
+                if imp.usuario:
+                    item["usuario"] = f"{imp.usuario.nombre} {imp.usuario.apellido}"
+                    item["email"]   = imp.usuario.email
+                else:
+                    item["usuario"] = "Usuario eliminado"
+                    item["email"]   = "-"
             data.append(item)
 
         return Response(data)
@@ -410,7 +370,6 @@ class ExportarExcelView(APIView):
         importacion_id = request.query_params.get("importacion_id")
 
         if importacion_id:
-            # Admin puede exportar cualquier importación, usuario solo las suyas
             if request.user.rol == 'admin':
                 try:
                     imp = ResultadoImportacion.objects.get(id=importacion_id)
@@ -647,7 +606,6 @@ class ComparativaView(APIView):
             return Response({"error": "Se requieren id1 e id2"}, status=400)
 
         try:
-            # Admin puede comparar cualquier importación
             if request.user.rol == 'admin':
                 imp1 = ResultadoImportacion.objects.get(id=id1)
                 imp2 = ResultadoImportacion.objects.get(id=id2)
@@ -676,3 +634,89 @@ class ComparativaView(APIView):
             }
 
         return Response({"periodo1": resumen(imp1), "periodo2": resumen(imp2)})
+
+
+class FiltrosDashboardView(APIView):
+    """Estadísticas filtradas por porción y/o rango de fechas (periodos YYYY-MM)"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        porcion        = request.query_params.get('porcion', '')
+        fecha_desde    = request.query_params.get('fecha_desde', '')
+        fecha_hasta    = request.query_params.get('fecha_hasta', '')
+        importacion_id = request.query_params.get('importacion_id', '')
+
+        if importacion_id:
+            try:
+                imp = ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
+            except ResultadoImportacion.DoesNotExist:
+                return Response({"error": "Importación no encontrada"}, status=404)
+        else:
+            imp = ResultadoImportacion.objects.filter(usuario=request.user).first()
+            if not imp:
+                return Response({"porciones": [], "periodos": [], "stats": None})
+
+        porciones_disponibles = list(
+            ConsumoMensual.objects.filter(importacion=imp)
+            .exclude(porcion__isnull=True).exclude(porcion='')
+            .values_list('porcion', flat=True)
+            .distinct().order_by('porcion')
+        )
+        periodos_disponibles = list(
+            ConsumoMensual.objects.filter(importacion=imp)
+            .values_list('periodo', flat=True)
+            .distinct().order_by('periodo')
+        )
+
+        if not porcion and not fecha_desde and not fecha_hasta:
+            return Response({
+                "porciones": porciones_disponibles,
+                "periodos":  periodos_disponibles,
+                "stats":     None,
+            })
+
+        qs = ConsumoMensual.objects.filter(importacion=imp)
+        if porcion:
+            qs = qs.filter(porcion=porcion)
+        if fecha_desde:
+            qs = qs.filter(periodo__gte=fecha_desde)
+        if fecha_hasta:
+            qs = qs.filter(periodo__lte=fecha_hasta)
+
+        cuentas_filtradas = qs.values_list('cuenta_contrato', flat=True).distinct()
+
+        clientes_qs     = Cliente.objects.filter(importacion=imp, cuenta_contrato__in=cuentas_filtradas)
+        total           = clientes_qs.count()
+        recategorizados = clientes_qs.filter(estado='Recategorizado').count()
+        sin_cambios     = clientes_qs.filter(estado='Sin cambio').count()
+
+        no_aptos_qs = ClienteNoApto.objects.filter(importacion=imp)
+        if porcion:
+            no_aptos_qs = no_aptos_qs.filter(porcion=porcion)
+        no_aptos_count = no_aptos_qs.count()
+
+        distribucion = list(clientes_qs.values('tarifa_nueva').annotate(cantidad=Count('id')))
+        cambios      = list(clientes_qs.values('tarifa_anterior', 'tarifa_nueva').annotate(cantidad_clientes=Count('id')))
+        if total > 0:
+            for c in cambios:
+                c['porcentaje'] = round(c['cantidad_clientes'] / total * 100, 2)
+
+        consumo_por_periodo = list(
+            qs.values('periodo')
+            .annotate(consumo_total=Sum('consumo'), dias_total=Sum('dias'))
+            .order_by('periodo')
+        )
+
+        return Response({
+            "porciones": porciones_disponibles,
+            "periodos":  periodos_disponibles,
+            "stats": {
+                "total_clientes":          total,
+                "recategorizados":         recategorizados,
+                "sin_cambios":             sin_cambios,
+                "no_aptos":                no_aptos_count,
+                "distribucion_categorias": distribucion,
+                "cambios_tarifarios":      cambios,
+                "consumo_por_periodo":     consumo_por_periodo,
+            }
+        })

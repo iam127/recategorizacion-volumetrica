@@ -41,6 +41,30 @@ class Cliente(models.Model):
         return f"{self.instalacion} - {self.tarifa_nueva}"
 
 
+class ConsumoMensual(models.Model):
+    """Detalle mensual de consumo por cliente — permite filtrar por fecha y porción"""
+    importacion     = models.ForeignKey(ResultadoImportacion, on_delete=models.CASCADE, related_name='consumos_mensuales')
+    cliente         = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='consumos_mensuales', null=True, blank=True)
+    cuenta_contrato = models.CharField(max_length=50)
+    instalacion     = models.CharField(max_length=50)
+    porcion         = models.CharField(max_length=50, blank=True, null=True)
+    periodo         = models.CharField(max_length=7)   # formato YYYY-MM
+    consumo         = models.FloatField(default=0)
+    dias            = models.IntegerField(default=0)
+    tarifa          = models.CharField(max_length=20, blank=True, null=True)
+
+    class Meta:
+        db_table  = 'consumo_mensual'
+        ordering  = ['periodo']
+        indexes   = [
+            models.Index(fields=['importacion', 'periodo']),
+            models.Index(fields=['importacion', 'porcion']),
+        ]
+
+    def __str__(self):
+        return f"{self.instalacion} - {self.periodo}: {self.consumo}"
+
+
 class ResumenTarifario(models.Model):
     importacion         = models.ForeignKey(ResultadoImportacion, on_delete=models.CASCADE, related_name='resumenes')
     tarifa_anterior     = models.CharField(max_length=20)
