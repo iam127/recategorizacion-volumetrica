@@ -1,9 +1,7 @@
 import { useState, useRef } from 'react'
 import Layout from '../components/layout/Layout'
-import axios from 'axios'
+import api from '../services/axiosInstance'
 import styles from './Operaciones.module.css'
-
-const API_URL = 'http://localhost:8000/api'
 
 const PASOS = [
   { id: 1, label: 'Carga de Archivos',  desc: 'Lectura y concatenación de los Excel mensuales',      icon: '📁' },

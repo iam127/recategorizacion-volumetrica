@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
 import Layout from '../components/layout/Layout'
-import axios from 'axios'
+import api from '../services/axiosInstance'
 import styles from './Clientes.module.css'
-
-const API_URL = 'http://localhost:8000/api'
 
 function ModalCliente({ cliente, onClose }) {
   if (!cliente) return null
