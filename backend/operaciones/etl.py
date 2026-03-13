@@ -564,4 +564,4 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean, df_factura
     else:
         cuadro_5 = pd.DataFrame(columns=["Cuenta_contrato", "Instalacion", "Fecha", "Tipo_anomalia"])
 
-    return cuadro_2, cuadro_3, cuadro_4, cuadro_5
+    return cuadro_2, cuadro_3, cuadro_4, cuadro_5, df_mensual
