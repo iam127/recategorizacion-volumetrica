@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import Layout from '../components/layout/Layout'
-import axios from 'axios'
+import api from '../services/axiosInstance'
 import styles from './Reportes.module.css'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, Legend
 } from 'recharts'
 
-const API_URL = 'http://localhost:8000/api'
 const COLORS  = ['#1e3a5f', '#2e75b6', '#9CA3AF']
 
 function Reportes() {
@@ -22,19 +21,16 @@ function Reportes() {
   const [selId2, setSelId2]           = useState('')
 
   const esAdmin = user?.rol === 'admin'
-  const token   = () => localStorage.getItem('access_token')
-
   useEffect(() => {
-    axios.get(`${API_URL}/operaciones/historial/`, {
-      headers: { Authorization: `Bearer ${token()}` }
-    }).then(r => setHistorial(r.data)).finally(() => setLoading(false))
+    api.get('/operaciones/historial/')
+      .then(r => setHistorial(r.data))
+      .finally(() => setLoading(false))
   }, [])
 
   const descargarExcel = async (importacionId, fecha) => {
     setDescargando(importacionId)
     try {
-      const res = await axios.get(`${API_URL}/operaciones/exportar-excel/`, {
-        headers:      { Authorization: `Bearer ${token()}` },
+      const res = await api.get('/operaciones/exportar-excel/', {
         params:       { importacion_id: importacionId },
         responseType: 'blob',
       })
@@ -56,9 +52,8 @@ function Reportes() {
     if (!selId1 || !selId2 || selId1 === selId2) return
     setLoadingComp(true)
     try {
-      const res = await axios.get(`${API_URL}/operaciones/comparativa/`, {
-        headers: { Authorization: `Bearer ${token()}` },
-        params:  { id1: selId1, id2: selId2 },
+      const res = await api.get('/operaciones/comparativa/', {
+        params: { id1: selId1, id2: selId2 },
       })
       setComparativa(res.data)
     } catch {

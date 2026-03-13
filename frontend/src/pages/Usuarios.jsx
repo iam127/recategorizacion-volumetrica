@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import Layout from '../components/layout/Layout'
-import axios from 'axios'
+import api from '../services/axiosInstance'
 import styles from './Usuarios.module.css'
 
-const API_URL = 'http://localhost:8000/api'
 
 function Usuarios() {
   const [usuarios, setUsuarios]     = useState([])
@@ -15,10 +14,7 @@ function Usuarios() {
 
   const fetchUsuarios = async () => {
     try {
-      const token = localStorage.getItem('access_token')
-      const res   = await axios.get(`${API_URL}/auth/usuarios/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res = await api.get('/auth/usuarios/')
       setUsuarios(res.data)
     } catch (err) {
       setError('Error al cargar usuarios')
@@ -32,10 +28,7 @@ function Usuarios() {
   const toggleActivo = async (id, activo) => {
     setTogglingId(id)
     try {
-      const token = localStorage.getItem('access_token')
-      await axios.patch(`${API_URL}/auth/usuarios/${id}/toggle/`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      await api.patch(`/auth/usuarios/${id}/toggle/`, {})
       setUsuarios(prev => prev.map(u =>
         u.id === id ? { ...u, is_active: !activo } : u
       ))

@@ -28,7 +28,7 @@ function Operaciones() {
 
   const agregarLecturas = (files) => {
     const validos = Array.from(files).filter(
-      f => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
+      f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
     )
     if (validos.length === 0) return
     setArchivos(prev => {
@@ -39,12 +39,17 @@ function Operaciones() {
     setError('')
   }
 
-    const agregarFacturacion = (files) => {
+  const agregarFacturacion = (files) => {
     const validos = Array.from(files).filter(
-      f => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
+      f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
     )
     if (validos.length === 0) return
-    setArchivosFact(validos)
+    setArchivosFact(prev => {
+      const nombres = prev.map(f => f.name)
+      const nuevos  = validos.filter(f => !nombres.includes(f.name))
+      return [...prev, ...nuevos]
+    })
+    setError('')
   }
 
   const procesarArchivos = async () => {
@@ -68,16 +73,12 @@ function Operaciones() {
     }
 
     try {
-      const token    = localStorage.getItem('access_token')
       const formData = new FormData()
       archivos.forEach(f => formData.append('archivos_lectura', f))
       archivosFact.forEach(f => formData.append('archivos_facturacion', f))
 
-      const res = await axios.post(`${API_URL}/operaciones/importar/`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        }
+      const res = await api.post('/operaciones/importar/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       })
 
       setPasoActual(5)
@@ -105,8 +106,6 @@ function Operaciones() {
 
   const totalSize  = archivos.reduce((acc, f) => acc + f.size, 0)
   const totalSizeF = archivosFact.reduce((acc, f) => acc + f.size, 0)
-
-  console.log('render archivosFact:', archivosFact.length)  
 
   return (
     <Layout title="Operaciones">
@@ -250,7 +249,7 @@ function Operaciones() {
                   setIsDraggingF(false)
                   agregarFacturacion(e.dataTransfer.files)
                 }}
-                onClick={e => { e.stopPropagation(); inputRefF.current.click() }}
+                onClick={() => inputRefF.current.click()}
               >
                 <input
                   ref={inputRefF}
@@ -258,11 +257,7 @@ function Operaciones() {
                   accept=".xlsx,.xls"
                   multiple
                   style={{ display: 'none' }}
-                  onChange={e => { 
-                  console.log('fact files:', e.target.files.length)
-                    agregarFacturacion(e.target.files)
-                    e.target.value = '' 
-                  }}
+                  onChange={e => { agregarFacturacion(e.target.files); e.target.value = '' }}
                 />
                 <span className={styles.dropIcon}>🧾</span>
                 <p className={styles.dropText}>Arrastra archivos de facturación aquí</p>

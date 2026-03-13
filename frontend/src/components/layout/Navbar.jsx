@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import axios from 'axios'
+import api from '../../services/axiosInstance'
 import styles from './Navbar.module.css'
-
-const API_URL = 'http://localhost:8000/api'
 
 function Navbar({ title }) {
   const { user } = useAuth()
@@ -24,9 +22,7 @@ function Navbar({ title }) {
     const token = localStorage.getItem('access_token')
     if (!token) return
 
-    axios.get(`${API_URL}/operaciones/historial/`, {
-      headers: { Authorization: `Bearer ${token}` }
-    }).then(res => {
+    api.get('/operaciones/historial/').then(res => {
       const prefs = JSON.parse(
         localStorage.getItem('notificaciones') ||
         '{"recategorizacion":true,"reportes":false,"sistema":true}'
@@ -56,7 +52,7 @@ function Navbar({ title }) {
 
   useEffect(() => {
     cargarNotificaciones()
-    const intervalo = setInterval(cargarNotificaciones, 60000) // refresca cada 60 seg
+    const intervalo = setInterval(cargarNotificaciones, 60000)
     return () => clearInterval(intervalo)
   }, [])
 

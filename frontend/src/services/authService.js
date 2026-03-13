@@ -1,9 +1,11 @@
 import axios from 'axios'
+import api from './axiosInstance'
 
 const API_URL = 'http://localhost:8000/api/auth'
 
 const authService = {
   login: async (email, password) => {
+    // Login usa axios directo (aún no hay token, no necesita interceptor)
     const response = await axios.post(`${API_URL}/login/`, { email, password })
     if (response.data.tokens) {
       localStorage.setItem('access_token', response.data.tokens.access)
@@ -32,6 +34,11 @@ const authService = {
   getToken: () => localStorage.getItem('access_token'),
 
   isAuthenticated: () => !!localStorage.getItem('access_token'),
+
+  // Actualizar perfil usando la instancia con refresh automático
+  getPerfil: () => api.get('/auth/perfil/'),
+  updatePerfil: (data) => api.put('/auth/perfil/', data),
+  cambiarPassword: (data) => api.post('/auth/cambiar-password/', data),
 }
 
 export default authService
