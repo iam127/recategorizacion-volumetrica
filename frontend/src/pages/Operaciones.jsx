@@ -1,9 +1,7 @@
 import { useState, useRef } from 'react'
 import Layout from '../components/layout/Layout'
-import axios from 'axios'
+import api from '../services/axiosInstance'
 import styles from './Operaciones.module.css'
-
-const API_URL = 'http://localhost:8000/api'
 
 const PASOS = [
   { id: 1, label: 'Carga de Archivos',  desc: 'Lectura y concatenación de los Excel mensuales',      icon: '📁' },
@@ -28,7 +26,7 @@ function Operaciones() {
 
   const agregarLecturas = (files) => {
     const validos = Array.from(files).filter(
-      f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+      f => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
     )
     if (validos.length === 0) return
     setArchivos(prev => {
@@ -41,7 +39,7 @@ function Operaciones() {
 
   const agregarFacturacion = (files) => {
     const validos = Array.from(files).filter(
-      f => f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+      f => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
     )
     if (validos.length === 0) return
     setArchivosFact(prev => {
@@ -53,13 +51,12 @@ function Operaciones() {
   }
 
   const procesarArchivos = async () => {
-    if (archivos.length === 0) return
-    if (archivos.length > 7) {
-      setError('Máximo 7 archivos de lecturas')
+    if (archivos.length === 0) {
+      setError('Debes cargar al menos un archivo de lecturas')
       return
     }
-    if (archivosFact.length > 7) {
-      setError('Máximo 7 archivos de facturación')
+    if (archivosFact.length === 0) {
+      setError('Debes cargar al menos un archivo de facturación')
       return
     }
     setError('')
@@ -117,8 +114,8 @@ function Operaciones() {
           <div>
             <h2 className={styles.headerTitle}>Importación y Recategorización</h2>
             <p className={styles.headerDesc}>
-              Importa los archivos Excel mensuales de lecturas y opcionalmente los de facturación
-              para obtener resultados más precisos.
+              Importa los archivos Excel mensuales de lecturas y facturación
+              para ejecutar el proceso de recategorización volumétrica.
             </p>
           </div>
         </div>
@@ -126,18 +123,18 @@ function Operaciones() {
         {/* Instrucciones */}
         <div className={styles.instrucciones}>
           <div className={styles.instrItem}>
-            <span className={styles.instrNum}>7</span>
+            <span className={styles.instrNum}>+1</span>
             <span className={styles.instrText}>Archivos de <strong>lecturas</strong> (requerido)</span>
           </div>
-          <div className={styles.instrSep}>+</div>
           <div className={styles.instrItem}>
-            <span className={styles.instrNum}>7</span>
-            <span className={styles.instrText}>Archivos de <strong>facturación</strong> (opcional, mejora precisión)</span>
+            <span className={styles.instrNum}>+1</span>
+            <span className={styles.instrText}>Archivos de <strong>facturación</strong> (requerido)</span>
           </div>
         </div>
 
         {!completado ? (
           <>
+            {/* ── Fila 1: Lecturas + Facturación ── */}
             <div className={styles.grid}>
 
               {/* Panel izquierdo — Lecturas */}
@@ -148,7 +145,7 @@ function Operaciones() {
                 </h3>
                 <p className={styles.cardDesc}>
                   {archivos.length === 0
-                    ? 'Selecciona entre 1 y 7 archivos .xlsx o .xls'
+                    ? 'Selecciona uno o más archivos .xlsx o .xls'
                     : `${archivos.length} archivo${archivos.length > 1 ? 's' : ''} · ${(totalSize / 1024 / 1024).toFixed(1)} MB`
                   }
                 </p>
@@ -174,7 +171,7 @@ function Operaciones() {
                   />
                   <span className={styles.dropIcon}>📁</span>
                   <p className={styles.dropText}>Arrastra archivos de lecturas aquí</p>
-                  <p className={styles.dropSub}>Carpeta: 01. Reporte resumen de lecturas</p>
+                  <p className={styles.dropSub}>Reporte resumen de lecturas</p>
                 </div>
 
                 {archivos.length > 0 && (
@@ -198,91 +195,94 @@ function Operaciones() {
                 )}
               </div>
 
-              {/* Panel derecho — Flujo */}
+              {/* Panel derecho — Facturación */}
               <div className={styles.card}>
-                <h3 className={styles.cardTitle}>🔄 Flujo del Proceso</h3>
-                <p className={styles.cardDesc}>Pasos de transformación automática</p>
-                <div className={styles.pasos}>
-                  {PASOS.map((paso) => (
-                    <div
-                      key={paso.id}
-                      className={`${styles.paso} ${
-                        pasoActual === paso.id ? styles.pasoActivo :
-                        pasoActual >  paso.id ? styles.pasoCompletado : ''
-                      }`}
-                    >
-                      <div className={styles.pasoNum}>
-                        {pasoActual > paso.id ? '✓' : paso.id}
-                      </div>
-                      <div className={styles.pasoInfo}>
-                        <span className={styles.pasoIcon}>{paso.icon}</span>
-                        <div>
-                          <p className={styles.pasoLabel}>{paso.label}</p>
-                          <p className={styles.pasoDesc}>{paso.desc}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <h3 className={styles.cardTitle}>
+                  🧾 Archivos de Facturación
+                  <span className={styles.badge}>Requerido</span>
+                </h3>
+                <p className={styles.cardDesc}>
+                  {archivosFact.length === 0
+                    ? 'Selecciona uno o más archivos .xlsx o .xls'
+                    : `${archivosFact.length} archivo${archivosFact.length > 1 ? 's' : ''} · ${(totalSizeF / 1024 / 1024).toFixed(1)} MB`
+                  }
+                </p>
+
+                <div
+                  className={`${styles.dropzone} ${styles.dropzoneFact} ${isDraggingF ? styles.dragging : ''} ${archivosFact.length > 0 ? styles.hasFile : ''}`}
+                  onDragOver={e => { e.preventDefault(); setIsDraggingF(true) }}
+                  onDragLeave={() => setIsDraggingF(false)}
+                  onDrop={e => {
+                    e.preventDefault()
+                    setIsDraggingF(false)
+                    agregarFacturacion(e.dataTransfer.files)
+                  }}
+                  onClick={() => inputRefF.current.click()}
+                >
+                  <input
+                    ref={inputRefF}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={e => { agregarFacturacion(e.target.files); e.target.value = '' }}
+                  />
+                  <span className={styles.dropIcon}>🧾</span>
+                  <p className={styles.dropText}>Arrastra archivos de facturación aquí</p>
+                  <p className={styles.dropSub}>Reportes resumen de facturación</p>
                 </div>
+
+                {archivosFact.length > 0 && (
+                  <div className={styles.archivosList}>
+                    {archivosFact.map((f, i) => (
+                      <div key={f.name} className={styles.archivoItem}>
+                        <span className={styles.archivoIdx}>{i + 1}</span>
+                        <span className={styles.archivoIcono}>🧾</span>
+                        <div className={styles.archivoInfo}>
+                          <p className={styles.archivoNombre}>{f.name}</p>
+                          <p className={styles.archivoTamano}>{(f.size / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                        <button
+                          className={styles.archivoRemove}
+                          onClick={() => setArchivosFact(prev => prev.filter(x => x.name !== f.name))}
+                          disabled={procesando}
+                        >✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Sección Facturación — ancho completo */}
-            <div className={`${styles.card} ${styles.cardFull}`}>
-              <h3 className={styles.cardTitle}>
-                🧾 Archivos de Facturación
-                <span className={styles.badgeOpcional}>Opcional</span>
-              </h3>
-              <p className={styles.cardDesc}>
-                {archivosFact.length === 0
-                  ? 'Si los agregas, la tarifa de referencia será más precisa y los resultados coincidirán con el análisis oficial.'
-                  : `${archivosFact.length} archivo${archivosFact.length > 1 ? 's' : ''} · ${(totalSizeF / 1024 / 1024).toFixed(1)} MB`
-                }
-              </p>
-
-              <div
-                className={`${styles.dropzone} ${styles.dropzoneFact} ${isDraggingF ? styles.dragging : ''} ${archivosFact.length > 0 ? styles.hasFile : ''}`}
-                onDragOver={e => { e.preventDefault(); setIsDraggingF(true) }}
-                onDragLeave={() => setIsDraggingF(false)}
-                onDrop={e => {
-                  e.preventDefault()
-                  setIsDraggingF(false)
-                  agregarFacturacion(e.dataTransfer.files)
-                }}
-                onClick={() => inputRefF.current.click()}
-              >
-                <input
-                  ref={inputRefF}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={e => { agregarFacturacion(e.target.files); e.target.value = '' }}
-                />
-                <span className={styles.dropIcon}>🧾</span>
-                <p className={styles.dropText}>Arrastra archivos de facturación aquí</p>
-                <p className={styles.dropSub}>Carpeta: 03. Reportes resumen de facturación</p>
-              </div>
-
-              {archivosFact.length > 0 && (
-                <div className={styles.archivosListH}>
-                  {archivosFact.map((f, i) => (
-                    <div key={f.name} className={styles.archivoItem}>
-                      <span className={styles.archivoIdx}>{i + 1}</span>
-                      <span className={styles.archivoIcono}>🧾</span>
-                      <div className={styles.archivoInfo}>
-                        <p className={styles.archivoNombre}>{f.name}</p>
-                        <p className={styles.archivoTamano}>{(f.size / 1024 / 1024).toFixed(2)} MB</p>
-                      </div>
-                      <button
-                        className={styles.archivoRemove}
-                        onClick={() => setArchivosFact(prev => prev.filter(x => x.name !== f.name))}
-                        disabled={procesando}
-                      >✕</button>
+            {/* ── Fila 2: Flujo del Proceso — ancho completo ── */}
+            <div className={styles.card}>
+              <h3 className={styles.cardTitle}>🔄 Flujo del Proceso</h3>
+              <p className={styles.cardDesc}>Pasos de transformación automática</p>
+              <div className={styles.pasos}>
+                {PASOS.map((paso) => (
+                  <div
+                    key={paso.id}
+                    className={`${styles.paso} ${
+                      pasoActual === paso.id ? styles.pasoActivo :
+                      pasoActual >  paso.id ? styles.pasoCompletado : ''
+                    }`}
+                  >
+                    <div className={styles.pasoNum}>
+                      {pasoActual > paso.id ? '✓' : paso.id}
                     </div>
-                  ))}
-                </div>
-              )}
+                    <div className={styles.pasoConector}>
+                      {paso.id < PASOS.length && <div className={styles.pasoLinea} />}
+                    </div>
+                    <div className={styles.pasoInfo}>
+                      <span className={styles.pasoIcon}>{paso.icon}</span>
+                      <div>
+                        <p className={styles.pasoLabel}>{paso.label}</p>
+                        <p className={styles.pasoDesc}>{paso.desc}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {error && <div className={styles.errorBox}>⚠️ {error}</div>}
@@ -290,11 +290,11 @@ function Operaciones() {
             <button
               className={styles.btnProcesar}
               onClick={procesarArchivos}
-              disabled={procesando || archivos.length === 0}
+              disabled={procesando || archivos.length === 0 || archivosFact.length === 0}
             >
               {procesando
                 ? <><span className={styles.spinner} /> Procesando...</>
-                : <>⚡ Iniciar Procesamiento ({archivos.length} lectura{archivos.length !== 1 ? 's' : ''}{archivosFact.length > 0 ? ` + ${archivosFact.length} facturación` : ''})</>
+                : <>⚡ Iniciar Procesamiento ({archivos.length} lectura{archivos.length !== 1 ? 's' : ''} · {archivosFact.length} facturación)</>
               }
             </button>
           </>
@@ -305,8 +305,7 @@ function Operaciones() {
               <span className={styles.resultadoIcon}>✅</span>
               <h3 className={styles.resultadoTitle}>¡Procesamiento completado!</h3>
               <p className={styles.resultadoSub}>
-                Los datos han sido recategorizados exitosamente
-                {resultado?.uso_facturacion_externa ? ' · Con datos de facturación' : ' · Solo con lecturas'}
+                Los datos han sido recategorizados exitosamente · Con datos de facturación
               </p>
             </div>
             <div className={styles.statsGrid}>

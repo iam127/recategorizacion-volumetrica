@@ -55,8 +55,8 @@ function Login() {
 
           <div className={styles.stats}>
             <div className={styles.stat}>
-              <span className={styles.statNum}>88K+</span>
-              <span className={styles.statLabel}>Registros</span>
+              <span className={styles.statNum}>100%</span>
+              <span className={styles.statLabel}>Automatizado</span>
             </div>
             <div className={styles.statDivider} />
             <div className={styles.stat}>
@@ -65,8 +65,8 @@ function Login() {
             </div>
             <div className={styles.statDivider} />
             <div className={styles.stat}>
-              <span className={styles.statNum}>5</span>
-              <span className={styles.statLabel}>Localidades</span>
+              <span className={styles.statNum}>ETL</span>
+              <span className={styles.statLabel}>Inteligente</span>
             </div>
           </div>
 

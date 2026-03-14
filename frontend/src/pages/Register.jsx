@@ -61,13 +61,13 @@ function Register() {
           <h1 className={styles.heroTitle}>
             Únete al<br />
             <span className={styles.heroAccent}>Sistema de</span><br />
-            Gestión
+            Recategorización
           </h1>
           <p className={styles.heroDesc}>
             Crea tu cuenta para acceder a la plataforma de recategorización volumétrica de ConTugas.
           </p>
           <div className={styles.steps}>
-            {['Crea tu cuenta', 'Accede al sistema', 'Gestiona tarifas'].map((s, i) => (
+            {['Crea tu cuenta', 'Accede a la plataforma', 'Analiza y recategoriza'].map((s, i) => (
               <div key={i} className={styles.step}>
                 <div className={styles.stepNum}>{i + 1}</div>
                 <span className={styles.stepLabel}>{s}</span>

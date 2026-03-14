@@ -67,11 +67,11 @@ function Sidebar() {
   ]
 
   const userLinks = [
-    { to: '/dashboard', label: 'Dashboard', icon: icons.dashboard },
-    { to: '/clientes', label: 'Clientes', icon: icons.clientes },
-    { to: '/reportes', label: 'Reportes', icon: icons.reportes },
-    { to: '/configuracion', label: 'Configuración', icon: icons.config },
-    { to: '/operaciones', label: 'Operaciones', icon: icons.operaciones },
+    { to: '/dashboard',     label: 'Dashboard',     icon: icons.dashboard },
+    { to: '/clientes',      label: 'Clientes',       icon: icons.clientes },
+    { to: '/operaciones',   label: 'Operaciones',    icon: icons.operaciones },
+    { to: '/reportes',      label: 'Reportes',       icon: icons.reportes },
+    { to: '/configuracion', label: 'Configuración',  icon: icons.config },
   ]
 
   const links = user?.rol === 'admin' ? adminLinks : userLinks
