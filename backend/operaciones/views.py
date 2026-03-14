@@ -21,11 +21,8 @@ class ImportarExcelView(APIView):
 
         if not archivos_lectura:
             return Response({"error": "Se requiere al menos un archivo de lecturas"}, status=status.HTTP_400_BAD_REQUEST)
-        if len(archivos_lectura) > 7:
-            return Response({"error": "Máximo 7 archivos de lecturas permitidos"}, status=status.HTTP_400_BAD_REQUEST)
-        if len(archivos_facturacion) > 7:
-            return Response({"error": "Máximo 7 archivos de facturación permitidos"}, status=status.HTTP_400_BAD_REQUEST)
-
+        if not archivos_facturacion:
+            return Response({"error": "Se requiere al menos un archivo de facturación"}, status=status.HTTP_400_BAD_REQUEST)
         try:
             dfs_lectura     = []
             dfs_facturacion = []
