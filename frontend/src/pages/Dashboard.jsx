@@ -14,6 +14,7 @@ const TARIFA_COLORS = {
   'REG-A2-CO': '#2e75b6',
   'REG-B-CO':  '#9CA3AF',
 }
+const RANGO_COLORS = ['#1e3a5f', '#2e75b6', '#9CA3AF']
 
 function StatCard({ label, sub, value, icon, color }) {
   return (
@@ -32,7 +33,6 @@ function StatCard({ label, sub, value, icon, color }) {
   )
 }
 
-// ── Selector de estilo compacto ───────────────────────────────────────────────
 function FilterSelect({ label, value, onChange, options, placeholder }) {
   return (
     <div style={{ flex: 1, minWidth: 160 }}>
@@ -63,51 +63,39 @@ function FilterSelect({ label, value, onChange, options, placeholder }) {
 function Dashboard() {
   const { user } = useAuth()
 
-  // ── Estado principal ──────────────────────────────────────────────────────
-  const [stats,       setStats]       = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [loadingSel,  setLoadingSel]  = useState(false)
-  const [tabCuadro3,  setTabCuadro3]  = useState('todos')
-
-  // Selectores admin
-  const [usuarioSel,    setUsuarioSel]    = useState('')
+  const [stats,          setStats]          = useState(null)
+  const [loading,        setLoading]        = useState(true)
+  const [loadingSel,     setLoadingSel]     = useState(false)
+  const [tabCuadro3,     setTabCuadro3]     = useState('todos')
+  const [usuarioSel,     setUsuarioSel]     = useState('')
   const [importacionSel, setImportacionSel] = useState('')
 
-  // ── Estado de filtros (solo usuario normal) ───────────────────────────────
   const [filtrosOpciones, setFiltrosOpciones] = useState({ porciones: [], periodos: [] })
   const [filtroPorcion,   setFiltroPorcion]   = useState('')
   const [filtroDesde,     setFiltroDesde]     = useState('')
   const [filtroHasta,     setFiltroHasta]     = useState('')
-  const [filtroStats,     setFiltroStats]     = useState(null)   // null = sin filtro activo
+  const [filtroStats,     setFiltroStats]     = useState(null)
   const [loadingFiltro,   setLoadingFiltro]   = useState(false)
   const [importacionId,   setImportacionId]   = useState(null)
 
   const esAdmin = user?.rol === 'admin'
 
-  // ── Fetch stats principal ─────────────────────────────────────────────────
   const fetchStats = async (params = {}) => {
     const res = await api.get('/operaciones/dashboard/stats/', { params })
     setStats(res.data)
     return res.data
   }
 
-  // ── Fetch opciones de filtros (porciones + periodos disponibles) ──────────
   const fetchFiltrosOpciones = useCallback(async (impId) => {
     const params = impId ? { importacion_id: impId } : {}
     try {
       const res = await api.get('/operaciones/dashboard/filtros/', { params })
       setFiltrosOpciones({ porciones: res.data.porciones, periodos: res.data.periodos })
-    } catch {
-      // silencioso — si no hay datos simplemente no hay opciones
-    }
+    } catch {}
   }, [])
 
-  // ── Fetch stats filtradas ─────────────────────────────────────────────────
   const fetchFiltroStats = useCallback(async (porcion, desde, hasta, impId) => {
-    if (!porcion && !desde && !hasta) {
-      setFiltroStats(null)
-      return
-    }
+    if (!porcion && !desde && !hasta) { setFiltroStats(null); return }
     setLoadingFiltro(true)
     const params = {}
     if (impId)   params.importacion_id = impId
@@ -117,14 +105,10 @@ function Dashboard() {
     try {
       const res = await api.get('/operaciones/dashboard/filtros/', { params })
       setFiltroStats(res.data.stats)
-    } catch {
-      setFiltroStats(null)
-    } finally {
-      setLoadingFiltro(false)
-    }
+    } catch { setFiltroStats(null) }
+    finally { setLoadingFiltro(false) }
   }, [])
 
-  // ── Efecto inicial ────────────────────────────────────────────────────────
   useEffect(() => {
     fetchStats().then(data => {
       if (!esAdmin && data?.importacion_id) {
@@ -134,7 +118,6 @@ function Dashboard() {
     }).finally(() => setLoading(false))
   }, [])
 
-  // ── Handlers admin ────────────────────────────────────────────────────────
   const handleUsuarioChange = async (e) => {
     const id = e.target.value
     setUsuarioSel(id)
@@ -152,81 +135,60 @@ function Dashboard() {
     finally { setLoadingSel(false) }
   }
 
-  // ── Handlers filtros usuario ──────────────────────────────────────────────
-  const handleFiltroPorcion = (val) => {
-    setFiltroPorcion(val)
-    fetchFiltroStats(val, filtroDesde, filtroHasta, importacionId)
-  }
-
-  const handleFiltroDesde = (val) => {
-    setFiltroDesde(val)
-    fetchFiltroStats(filtroPorcion, val, filtroHasta, importacionId)
-  }
-
-  const handleFiltroHasta = (val) => {
-    setFiltroHasta(val)
-    fetchFiltroStats(filtroPorcion, filtroDesde, val, importacionId)
-  }
-
-  const limpiarFiltros = () => {
-    setFiltroPorcion('')
-    setFiltroDesde('')
-    setFiltroHasta('')
-    setFiltroStats(null)
-  }
+  const handleFiltroPorcion = (val) => { setFiltroPorcion(val); fetchFiltroStats(val, filtroDesde, filtroHasta, importacionId) }
+  const handleFiltroDesde   = (val) => { setFiltroDesde(val);   fetchFiltroStats(filtroPorcion, val, filtroHasta, importacionId) }
+  const handleFiltroHasta   = (val) => { setFiltroHasta(val);   fetchFiltroStats(filtroPorcion, filtroDesde, val, importacionId) }
+  const limpiarFiltros = () => { setFiltroPorcion(''); setFiltroDesde(''); setFiltroHasta(''); setFiltroStats(null) }
 
   const hayFiltros = filtroPorcion || filtroDesde || filtroHasta
 
-  // ── Datos para render ─────────────────────────────────────────────────────
-  const activeStats = filtroStats || stats   // si hay filtro activo, usarlo
-
+  const activeStats = filtroStats || stats
   const total      = activeStats?.total_clientes  || 0
   const recat      = activeStats?.recategorizados || 0
   const sinCambios = activeStats?.sin_cambios     || 0
   const noAptos    = activeStats?.no_aptos        || 0
-  const anomalias  = stats?.anomalias             || 0   // anomalías siempre del total
+  const anomalias  = stats?.anomalias             || 0
   const globales   = stats?.globales              || {}
 
-  const pieData = activeStats?.distribucion_categorias?.map(d => ({
-    name: d.tarifa_nueva, value: d.cantidad,
-  })) || []
-
-  const barData = activeStats?.cambios_tarifarios
-    ?.filter(d => d.tarifa_anterior !== d.tarifa_nueva)
-    ?.map(d => ({ name: `${d.tarifa_anterior} → ${d.tarifa_nueva}`, value: d.cantidad_clientes })) || []
+  const pieData  = activeStats?.distribucion_categorias?.map(d => ({ name: d.tarifa_nueva, value: d.cantidad })) || []
+  const barData  = activeStats?.cambios_tarifarios?.filter(d => d.tarifa_anterior !== d.tarifa_nueva)?.map(d => ({ name: `${d.tarifa_anterior} → ${d.tarifa_nueva}`, value: d.cantidad_clientes })) || []
 
   const cuadro3Data     = activeStats?.cambios_tarifarios || []
-  const cuadro3Filtrado = tabCuadro3 === 'todos'
-    ? cuadro3Data
-    : cuadro3Data.filter(d => d.tarifa_anterior !== d.tarifa_nueva)
+  const cuadro3Filtrado = tabCuadro3 === 'todos' ? cuadro3Data : cuadro3Data.filter(d => d.tarifa_anterior !== d.tarifa_nueva)
 
   const noAptosObs    = stats?.no_aptos_observaciones || []
   const anomaliasTipo = stats?.anomalias_por_tipo     || []
 
-  // Gráfica de consumo mensual (solo visible con filtro activo)
-  const consumoPorPeriodo = filtroStats?.consumo_por_periodo?.map(d => ({
+  // ── NUEVOS DATOS ──────────────────────────────────────────────────────────
+  const consumoPorPeriodo = (filtroStats?.consumo_por_periodo || stats?.consumo_por_periodo || []).map(d => ({
     periodo: d.periodo,
-    consumo: parseFloat(d.consumo_total?.toFixed(1) || 0),
-  })) || []
+    consumo: parseFloat((d.consumo_total || 0).toFixed(1)),
+  }))
 
-  // Importaciones del usuario seleccionado (admin)
+  const distribucionRangos = (stats?.distribucion_rangos || []).map((d, i) => ({
+    name    : d.rango,
+    cantidad: d.cantidad,
+    fill    : RANGO_COLORS[i % RANGO_COLORS.length],
+  }))
+
+  // Movimientos tarifarios — solo cambios reales
+  const movimientosData = (activeStats?.cambios_tarifarios || [])
+    .filter(d => d.tarifa_anterior !== d.tarifa_nueva)
+    .map(d => ({
+      desde   : d.tarifa_anterior,
+      hacia   : d.tarifa_nueva,
+      cantidad: d.cantidad_clientes ?? d.cantidad ?? 0,
+      pct     : parseFloat(d.porcentaje ?? 0).toFixed(2),
+    }))
+
+  const opcionesPeriodo = filtrosOpciones.periodos.map(p => ({ value: p, label: p }))
+  const opcionesPorcion = filtrosOpciones.porciones.map(p => ({ value: p, label: `Porción ${p}` }))
+  const opcionesHasta   = filtroDesde ? opcionesPeriodo.filter(o => o.value >= filtroDesde) : opcionesPeriodo
+  const opcionesDesde   = filtroHasta ? opcionesPeriodo.filter(o => o.value <= filtroHasta) : opcionesPeriodo
+
   const importacionesUsuario = usuarioSel
     ? (stats?.usuarios_lista?.find(u => String(u.id) === String(usuarioSel))?.importaciones || [])
     : []
-
-  // Opciones para los selects de fecha
-  const opcionesPeriodo = filtrosOpciones.periodos.map(p => ({ value: p, label: p }))
-  const opcionesPorcion = filtrosOpciones.porciones.map(p => ({ value: p, label: `Porción ${p}` }))
-
-  // Periodos para "hasta" (solo los >= desde seleccionado)
-  const opcionesHasta = filtroDesde
-    ? opcionesPeriodo.filter(o => o.value >= filtroDesde)
-    : opcionesPeriodo
-
-  // Periodos para "desde" (solo los <= hasta seleccionado)
-  const opcionesDesde = filtroHasta
-    ? opcionesPeriodo.filter(o => o.value <= filtroHasta)
-    : opcionesPeriodo
 
   return (
     <Layout title="Dashboard">
@@ -261,16 +223,15 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* ── Stats globales + selectores — solo admin ── */}
+        {/* ── Stats globales admin ── */}
         {esAdmin && !loading && (
           <>
-            {/* 4 tarjetas globales oscuras */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
               {[
-                { label: 'TOTAL IMPORTACIONES',  value: globales.total_importaciones ?? 0,                       icon: '📥', color: '#F59E0B' },
-                { label: 'USUARIOS ACTIVOS',      value: stats.usuarios_activos ?? 0,                             icon: '👥', color: '#10B981' },
-                { label: 'TOTAL REGISTROS',       value: (globales.total_registros ?? 0).toLocaleString(),        icon: '📊', color: '#2e75b6' },
-                { label: 'TOTAL RECATEGORIZADOS', value: (globales.total_recategorizados ?? 0).toLocaleString(),  icon: '✅', color: '#10B981' },
+                { label: 'TOTAL IMPORTACIONES',  value: globales.total_importaciones ?? 0,                      icon: '📥', color: '#F59E0B' },
+                { label: 'USUARIOS ACTIVOS',      value: stats.usuarios_activos ?? 0,                            icon: '👥', color: '#10B981' },
+                { label: 'TOTAL REGISTROS',       value: (globales.total_registros ?? 0).toLocaleString(),       icon: '📊', color: '#2e75b6' },
+                { label: 'TOTAL RECATEGORIZADOS', value: (globales.total_recategorizados ?? 0).toLocaleString(), icon: '✅', color: '#10B981' },
               ].map((s, i) => (
                 <div key={i} className={styles.statCard} style={{ background: 'linear-gradient(135deg,#0B1120,#1e3a5f)' }}>
                   <div className={styles.statTop}>
@@ -287,68 +248,33 @@ function Dashboard() {
               ))}
             </div>
 
-            {/* Selectores usuario / importación */}
-            <div style={{
-              background: '#fff', border: '1px solid #F0F0F0',
-              borderRadius: 14, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14
-            }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>
-                📋 Ver estadísticas detalladas
-              </p>
+            <div style={{ background: '#fff', border: '1px solid #F0F0F0', borderRadius: 14, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>📋 Ver estadísticas detalladas</p>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={{ flex: 1 }}>
                   <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>Usuario</p>
-                  <select
-                    value={usuarioSel}
-                    onChange={handleUsuarioChange}
-                    style={{
-                      width: '100%', padding: '10px 14px', borderRadius: 10,
-                      border: '1px solid #E5E7EB', fontSize: 14,
-                      fontFamily: 'DM Sans, sans-serif', outline: 'none', cursor: 'pointer', color: '#374151',
-                    }}
-                  >
+                  <select value={usuarioSel} onChange={handleUsuarioChange} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #E5E7EB', fontSize: 14, fontFamily: 'DM Sans, sans-serif', outline: 'none', cursor: 'pointer', color: '#374151' }}>
                     <option value="">— Última importación del sistema —</option>
                     {(stats.usuarios_lista || []).map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.nombre} {u.apellido} · {u.total_importaciones} importación{u.total_importaciones !== 1 ? 'es' : ''}
-                      </option>
+                      <option key={u.id} value={u.id}>{u.nombre} {u.apellido} · {u.total_importaciones} importación{u.total_importaciones !== 1 ? 'es' : ''}</option>
                     ))}
                   </select>
                 </div>
-
                 {usuarioSel && importacionesUsuario.length > 1 && (
                   <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>Importación</p>
-                    <select
-                      value={importacionSel}
-                      onChange={handleImportacionChange}
-                      style={{
-                        width: '100%', padding: '10px 14px', borderRadius: 10,
-                        border: '1px solid #E5E7EB', fontSize: 14,
-                        fontFamily: 'DM Sans, sans-serif', outline: 'none', cursor: 'pointer', color: '#374151',
-                      }}
-                    >
+                    <select value={importacionSel} onChange={handleImportacionChange} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #E5E7EB', fontSize: 14, fontFamily: 'DM Sans, sans-serif', outline: 'none', cursor: 'pointer', color: '#374151' }}>
                       <option value="">— Más reciente —</option>
                       {importacionesUsuario.map((imp, i) => (
-                        <option key={imp.id} value={imp.id}>
-                          #{importacionesUsuario.length - i} · {imp.fecha_str} · {imp.total_registros.toLocaleString()} registros
-                        </option>
+                        <option key={imp.id} value={imp.id}>#{importacionesUsuario.length - i} · {imp.fecha_str} · {imp.total_registros.toLocaleString()} registros</option>
                       ))}
                     </select>
                   </div>
                 )}
-
                 {loadingSel && <span style={{ fontSize: 13, color: '#9CA3AF', whiteSpace: 'nowrap' }}>Cargando...</span>}
-
                 {stats.importador && (
-                  <div style={{
-                    background: '#F9FAFB', border: '1px solid #F0F0F0',
-                    borderRadius: 10, padding: '8px 16px',
-                    fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap', alignSelf: 'flex-end'
-                  }}>
-                    Viendo: <strong style={{ color: '#0B1120' }}>
-                      {stats.importador}{stats.importacion_fecha ? ` · ${stats.importacion_fecha}` : ''}
-                    </strong>
+                  <div style={{ background: '#F9FAFB', border: '1px solid #F0F0F0', borderRadius: 10, padding: '8px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}>
+                    Viendo: <strong style={{ color: '#0B1120' }}>{stats.importador}{stats.importacion_fecha ? ` · ${stats.importacion_fecha}` : ''}</strong>
                   </div>
                 )}
               </div>
@@ -358,156 +284,170 @@ function Dashboard() {
 
         {/* ── Stats principales ── */}
         <div className={styles.statsGrid}>
-          <StatCard label="TOTAL CLIENTES"  sub={hayFiltros ? '🔍 Filtrado' : 'Base activa'}
-            value={loading ? '...' : total.toLocaleString()}      icon="👥" color="#2e75b6" />
-          <StatCard label="RECATEGORIZADOS" sub={`${total > 0 ? ((recat/total)*100).toFixed(1) : 0}% del total`}
-            value={loading ? '...' : recat.toLocaleString()}       icon="📊" color="#10B981" />
-          <StatCard label="SIN CAMBIOS"     sub={`${total > 0 ? ((sinCambios/total)*100).toFixed(1) : 0}% del total`}
-            value={loading ? '...' : sinCambios.toLocaleString()}  icon="➖" color="#6B7280" />
-          <StatCard label="NO APTOS"        sub={hayFiltros ? 'En porción seleccionada' : 'No cumplen criterios'}
-            value={loading ? '...' : noAptos.toLocaleString()}     icon="⚠️" color="#F59E0B" />
-          <StatCard label="ANOMALÍAS"       sub="Detectadas en lecturas"
-            value={loading ? '...' : anomalias.toLocaleString()}   icon="🔍" color="#EF4444" />
+          <StatCard label="TOTAL CLIENTES"  sub={hayFiltros ? '🔍 Filtrado' : 'Base activa'}         value={loading ? '...' : total.toLocaleString()}      icon="👥" color="#2e75b6" />
+          <StatCard label="RECATEGORIZADOS" sub={`${total > 0 ? ((recat/total)*100).toFixed(1) : 0}% del total`} value={loading ? '...' : recat.toLocaleString()}  icon="📊" color="#10B981" />
+          <StatCard label="SIN CAMBIOS"     sub={`${total > 0 ? ((sinCambios/total)*100).toFixed(1) : 0}% del total`} value={loading ? '...' : sinCambios.toLocaleString()} icon="➖" color="#6B7280" />
+          <StatCard label="NO APTOS"        sub={hayFiltros ? 'En porción seleccionada' : 'No cumplen criterios'} value={loading ? '...' : noAptos.toLocaleString()} icon="⚠️" color="#F59E0B" />
+          <StatCard label="ANOMALÍAS"       sub="Detectadas en lecturas" value={loading ? '...' : anomalias.toLocaleString()} icon="🔍" color="#EF4444" />
         </div>
 
-        {/* ── Panel de filtros — solo usuario normal ── */}
+        {/* ── Filtros usuario normal ── */}
         {!esAdmin && !loading && (
-          <div style={{
-            background: '#fff',
-            border: `1px solid ${hayFiltros ? '#2e75b6' : '#F0F0F0'}`,
-            borderRadius: 14, padding: '18px 24px',
-            transition: 'border .25s',
-          }}>
-            {/* Header del panel */}
+          <div style={{ background: '#fff', border: `1px solid ${hayFiltros ? '#2e75b6' : '#F0F0F0'}`, borderRadius: 14, padding: '18px 24px', transition: 'border .25s' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 16 }}>🔎</span>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>
-                  Análisis por Porción y Período
-                </p>
-                {hayFiltros && (
-                  <span style={{
-                    background: '#EFF6FF', color: '#2e75b6', fontSize: 11,
-                    fontWeight: 700, padding: '2px 10px', borderRadius: 20, border: '1px solid #BFDBFE'
-                  }}>
-                    FILTRO ACTIVO
-                  </span>
-                )}
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>Análisis por Porción y Período</p>
+                {hayFiltros && <span style={{ background: '#EFF6FF', color: '#2e75b6', fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20, border: '1px solid #BFDBFE' }}>FILTRO ACTIVO</span>}
               </div>
               {hayFiltros && (
-                <button
-                  onClick={limpiarFiltros}
-                  style={{
-                    background: 'none', border: '1px solid #E5E7EB', borderRadius: 8,
-                    padding: '5px 12px', fontSize: 12, color: '#6B7280',
-                    cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                  }}
-                >
+                <button onClick={limpiarFiltros} style={{ background: 'none', border: '1px solid #E5E7EB', borderRadius: 8, padding: '5px 12px', fontSize: 12, color: '#6B7280', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', display: 'flex', alignItems: 'center', gap: 4 }}>
                   ✕ Limpiar filtros
                 </button>
               )}
             </div>
-
-            {/* Controles */}
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <FilterSelect
-                label="Porción"
-                value={filtroPorcion}
-                onChange={handleFiltroPorcion}
-                options={opcionesPorcion}
-                placeholder="— Todas las porciones —"
-              />
-              <FilterSelect
-                label="Desde (mes)"
-                value={filtroDesde}
-                onChange={handleFiltroDesde}
-                options={opcionesDesde}
-                placeholder="— Mes inicio —"
-              />
-              <FilterSelect
-                label="Hasta (mes)"
-                value={filtroHasta}
-                onChange={handleFiltroHasta}
-                options={opcionesHasta}
-                placeholder="— Mes fin —"
-              />
-
-              {loadingFiltro && (
-                <div style={{ alignSelf: 'flex-end', paddingBottom: 10 }}>
-                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>Calculando...</span>
-                </div>
-              )}
+              <FilterSelect label="Porción"     value={filtroPorcion} onChange={handleFiltroPorcion} options={opcionesPorcion} placeholder="— Todas las porciones —" />
+              <FilterSelect label="Desde (mes)" value={filtroDesde}   onChange={handleFiltroDesde}   options={opcionesDesde}   placeholder="— Mes inicio —" />
+              <FilterSelect label="Hasta (mes)" value={filtroHasta}   onChange={handleFiltroHasta}   options={opcionesHasta}   placeholder="— Mes fin —" />
+              {loadingFiltro && <div style={{ alignSelf: 'flex-end', paddingBottom: 10 }}><span style={{ fontSize: 12, color: '#9CA3AF' }}>Calculando...</span></div>}
             </div>
-
-            {/* Resumen del filtro activo */}
             {hayFiltros && !loadingFiltro && filtroStats && (
-              <div style={{
-                marginTop: 14, padding: '10px 16px',
-                background: '#F0F7FF', borderRadius: 10, border: '1px solid #BFDBFE',
-                display: 'flex', gap: 24, flexWrap: 'wrap',
-              }}>
+              <div style={{ marginTop: 14, padding: '10px 16px', background: '#F0F7FF', borderRadius: 10, border: '1px solid #BFDBFE', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                 {[
-                  { label: 'Clientes',         value: filtroStats.total_clientes.toLocaleString(),   color: '#2e75b6' },
-                  { label: 'Recategorizados',  value: filtroStats.recategorizados.toLocaleString(),  color: '#10B981' },
-                  { label: 'Sin cambios',      value: filtroStats.sin_cambios.toLocaleString(),      color: '#6B7280' },
-                  { label: 'No aptos',         value: filtroStats.no_aptos.toLocaleString(),         color: '#F59E0B' },
+                  { label: 'Clientes',        value: filtroStats.total_clientes.toLocaleString(),  color: '#2e75b6' },
+                  { label: 'Recategorizados', value: filtroStats.recategorizados.toLocaleString(), color: '#10B981' },
+                  { label: 'Sin cambios',     value: filtroStats.sin_cambios.toLocaleString(),     color: '#6B7280' },
+                  { label: 'No aptos',        value: filtroStats.no_aptos.toLocaleString(),        color: '#F59E0B' },
                 ].map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, color: '#6B7280' }}>{s.label}:</span>
                     <strong style={{ fontSize: 15, color: s.color }}>{s.value}</strong>
                   </div>
                 ))}
-                {filtroPorcion && (
-                  <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 'auto' }}>
-                    📍 Porción <strong style={{ color: '#1e3a5f' }}>{filtroPorcion}</strong>
-                  </span>
-                )}
-                {(filtroDesde || filtroHasta) && (
-                  <span style={{ fontSize: 12, color: '#6B7280' }}>
-                    📅 {filtroDesde || '...'} → {filtroHasta || '...'}
-                  </span>
-                )}
+                {filtroPorcion && <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 'auto' }}>📍 Porción <strong style={{ color: '#1e3a5f' }}>{filtroPorcion}</strong></span>}
+                {(filtroDesde || filtroHasta) && <span style={{ fontSize: 12, color: '#6B7280' }}>📅 {filtroDesde || '...'} → {filtroHasta || '...'}</span>}
               </div>
             )}
           </div>
         )}
 
-        {/* ── Gráfica de consumo mensual (solo con filtro activo) ── */}
-        {!esAdmin && hayFiltros && !loadingFiltro && consumoPorPeriodo.length > 0 && (
+        {/* ══════════════════════════════════════════════════════
+            NUEVO — Evolución mensual de consumo (siempre visible)
+        ══════════════════════════════════════════════════════ */}
+        {!loading && consumoPorPeriodo.length > 0 && (
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
               <div>
                 <h3 className={styles.chartTitle}>📈 Evolución de Consumo Mensual</h3>
                 <p className={styles.chartSub}>
-                  Consumo m³ por período
-                  {filtroPorcion ? ` — Porción ${filtroPorcion}` : ''}
-                  {filtroDesde || filtroHasta ? ` — ${filtroDesde || '...'} a ${filtroHasta || '...'}` : ''}
+                  Consumo total facturado m³ por período — ventana de 6 meses
+                  {hayFiltros && filtroPorcion ? ` · Porción ${filtroPorcion}` : ''}
                 </p>
               </div>
-              <span style={{
-                background: '#EFF6FF', color: '#2e75b6', fontSize: 11,
-                fontWeight: 700, padding: '3px 12px', borderRadius: 20, border: '1px solid #BFDBFE'
-              }}>
+              <span style={{ background: '#EFF6FF', color: '#2e75b6', fontSize: 11, fontWeight: 700, padding: '3px 12px', borderRadius: 20, border: '1px solid #BFDBFE' }}>
                 {consumoPorPeriodo.length} meses
               </span>
             </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={consumoPorPeriodo} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={consumoPorPeriodo} margin={{ top: 5, right: 24, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
                 <XAxis dataKey="periodo" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => v.toLocaleString()} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => v.toLocaleString()} width={80} />
                 <Tooltip formatter={v => [v.toLocaleString() + ' m³', 'Consumo']} />
-                <Line
-                  type="monotone" dataKey="consumo" stroke="#2e75b6"
-                  strokeWidth={2.5} dot={{ r: 5, fill: '#2e75b6' }} activeDot={{ r: 7 }}
-                />
+                <Line type="monotone" dataKey="consumo" stroke="#2e75b6" strokeWidth={2.5} dot={{ r: 5, fill: '#2e75b6' }} activeDot={{ r: 7 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
 
-        {/* ── Charts fila 1 ── */}
+        {/* ══════════════════════════════════════════════════════
+            NUEVO — Movimientos tarifarios + Distribución por rango
+        ══════════════════════════════════════════════════════ */}
+        {!loading && (movimientosData.length > 0 || distribucionRangos.length > 0) && (
+          <div className={styles.chartsGrid}>
+
+            {/* Movimientos tarifarios */}
+            <div className={styles.chartCard}>
+              <div className={styles.chartHeader}>
+                <div>
+                  <h3 className={styles.chartTitle}>🔄 Movimientos Tarifarios</h3>
+                  <p className={styles.chartSub}>Clientes que cambiaron de categoría</p>
+                </div>
+                <span className={styles.badgeCount}>{movimientosData.reduce((a, b) => a + b.cantidad, 0).toLocaleString()}</span>
+              </div>
+              {movimientosData.length === 0 ? (
+                <div className={styles.emptyChart}>Sin movimientos tarifarios</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {movimientosData.map((m, i) => {
+                    const totalMov = movimientosData.reduce((a, b) => a + b.cantidad, 0)
+                    const pct = totalMov > 0 ? (m.cantidad / totalMov * 100).toFixed(1) : 0
+                    return (
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ background: `${TARIFA_COLORS[m.desde]}20`, color: TARIFA_COLORS[m.desde], padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{m.desde}</span>
+                            <span style={{ color: '#9CA3AF', fontSize: 14 }}>→</span>
+                            <span style={{ background: `${TARIFA_COLORS[m.hacia]}20`, color: TARIFA_COLORS[m.hacia], padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>{m.hacia}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', fontFamily: 'Sora, sans-serif' }}>{m.cantidad.toLocaleString()}</span>
+                            <span style={{ fontSize: 11, color: '#9CA3AF' }}>{pct}%</span>
+                          </div>
+                        </div>
+                        <div style={{ height: 6, background: '#F3F4F6', borderRadius: 10, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: TARIFA_COLORS[m.hacia], borderRadius: 10, transition: 'width .6s ease' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Distribución por rango de consumo */}
+            <div className={styles.chartCard}>
+              <div className={styles.chartHeader}>
+                <div>
+                  <h3 className={styles.chartTitle}>📦 Distribución por Rango</h3>
+                  <p className={styles.chartSub}>Clientes según promedio mensual de consumo</p>
+                </div>
+              </div>
+              {distribucionRangos.length === 0 ? (
+                <div className={styles.emptyChart}>Sin datos de rangos aún</div>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={distribucionRangos} barCategoryGap="30%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} height={50} tickFormatter={(v) => v.split(' ')[0]} />
+
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={v => v.toLocaleString()} width={70} />
+                      <Tooltip formatter={v => [v.toLocaleString(), 'Clientes']} />
+                      <Bar dataKey="cantidad" radius={[6, 6, 0, 0]}>
+                        {distribucionRangos.map((d, i) => (
+                          <Cell key={i} fill={d.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className={styles.legend} style={{ marginTop: 12 }}>
+                    {distribucionRangos.map((d, i) => (
+                      <div key={i} className={styles.legendItem}>
+                        <span className={styles.legendDot} style={{ background: d.fill }} />
+                        <span className={styles.legendName}>{d.name}</span>
+                        <span className={styles.legendValue}>{d.cantidad.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Charts fila existente ── */}
         <div className={styles.chartsGrid}>
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
@@ -519,11 +459,11 @@ function Dashboard() {
             {barData.length === 0 ? (
               <div className={styles.emptyChart}>Sin datos de cambios tarifarios aún</div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={barData} layout="vertical">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={barData} layout="vertical" margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F0F0F0"/>
                   <XAxis type="number" tick={{ fontSize: 12 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={130}/>
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={180}/>
                   <Tooltip />
                   <Bar dataKey="value" radius={[0,6,6,0]}>
                     {barData.map((_, i) => <Cell key={i} fill={i%2===0?'#1e3a5f':'#9CA3AF'} />)}
@@ -566,7 +506,7 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* ── Cuadro 3 ── */}
+        {/* ── Resumen Tarifario ── */}
         <div className={styles.chartCard}>
           <div className={styles.chartHeader}>
             <div>
@@ -593,7 +533,7 @@ function Dashboard() {
                   {cuadro3Filtrado.map((row, i) => (
                     <tr key={i}>
                       <td><span className={styles.badge} style={{ background: TARIFA_COLORS[row.tarifa_anterior]+'20', color: TARIFA_COLORS[row.tarifa_anterior] }}>{row.tarifa_anterior}</span></td>
-                      <td><span className={styles.badge} style={{ background: TARIFA_COLORS[row.tarifa_nueva]+'20',      color: TARIFA_COLORS[row.tarifa_nueva]      }}>{row.tarifa_nueva}</span></td>
+                      <td><span className={styles.badge} style={{ background: TARIFA_COLORS[row.tarifa_nueva]+'20',    color: TARIFA_COLORS[row.tarifa_nueva]      }}>{row.tarifa_nueva}</span></td>
                       <td className={styles.tdNum}>{(row.cantidad_clientes ?? row.cantidad ?? 0).toLocaleString()}</td>
                       <td className={styles.tdNum}>{parseFloat(row.porcentaje ?? 0).toFixed(2)}%</td>
                       <td>
@@ -610,7 +550,7 @@ function Dashboard() {
           )}
         </div>
 
-        {/* ── Cuadro 4 y 5 ── */}
+        {/* ── No aptos + Anomalías ── */}
         <div className={styles.chartsGrid}>
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
@@ -655,11 +595,11 @@ function Dashboard() {
               <div className={styles.emptyChart}>Sin datos aún</div>
             ) : (
               <>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={anomaliasTipo.map(d=>({name:d.tipo_anomalia,value:d.cantidad}))} layout="vertical">
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={anomaliasTipo.map(d=>({name:d.tipo_anomalia,value:d.cantidad}))} layout="vertical" margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F0F0F0"/>
                     <XAxis type="number" tick={{ fontSize:11 }} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize:10 }} width={160}/>
+                    <YAxis type="category" dataKey="name" tick={{ fontSize:10, wordBreak: 'break-word' }} width={220}/>
                     <Tooltip />
                     <Bar dataKey="value" fill="#EF4444" radius={[0,6,6,0]} />
                   </BarChart>
