@@ -23,6 +23,7 @@ class ImportarExcelView(APIView):
             return Response({"error": "Se requiere al menos un archivo de lecturas"}, status=status.HTTP_400_BAD_REQUEST)
         if not archivos_facturacion:
             return Response({"error": "Se requiere al menos un archivo de facturación"}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             dfs_lectura     = []
             dfs_facturacion = []
@@ -188,6 +189,8 @@ class DashboardStatsView(APIView):
                 "cambios_tarifarios":      [],
                 "no_aptos_observaciones":  [],
                 "anomalias_por_tipo":      [],
+                "consumo_por_periodo":     [],
+                "distribucion_rangos":     [],
                 "total_importaciones":     0,
                 "usuarios_activos":        0,
             })
@@ -217,6 +220,36 @@ class DashboardStatsView(APIView):
             .order_by("-cantidad")[:6]
         )
 
+        # ── NUEVO: Evolución de consumo mensual (6 meses) ────────────────────
+        consumo_por_periodo = list(
+            ConsumoMensual.objects.filter(importacion=ultima)
+            .values("periodo")
+            .annotate(consumo_total=Sum("consumo"), dias_total=Sum("dias"))
+            .order_by("periodo")
+        )
+
+        # ── NUEVO: Distribución por rango de consumo (promedio mensual) ──────
+        def _rango(promedio):
+            if promedio <= 30:   return "REG-A1-CO (0-30 m³)"
+            if promedio <= 300:  return "REG-A2-CO (31-300 m³)"
+            return "REG-B-CO (>300 m³)"
+
+        clientes_qs = Cliente.objects.filter(importacion=ultima).values(
+            "promedio_mensual", "tarifa_anterior", "tarifa_nueva"
+        )
+
+        rangos = {}
+        for c in clientes_qs:
+            rango = _rango(c["promedio_mensual"] or 0)
+            if rango not in rangos:
+                rangos[rango] = 0
+            rangos[rango] += 1
+
+        distribucion_rangos = [
+            {"rango": k, "cantidad": v}
+            for k, v in sorted(rangos.items())
+        ]
+
         data = {
             "es_admin":                es_admin,
             "importacion_id":          ultima.id,
@@ -229,6 +262,8 @@ class DashboardStatsView(APIView):
             "cambios_tarifarios":      list(cambios),
             "no_aptos_observaciones":  list(no_aptos_obs),
             "anomalias_por_tipo":      list(anomalias_tipo),
+            "consumo_por_periodo":     consumo_por_periodo,
+            "distribucion_rangos":     distribucion_rangos,
         }
 
         if es_admin:
@@ -236,7 +271,6 @@ class DashboardStatsView(APIView):
             User = get_user_model()
             data["total_importaciones"] = ResultadoImportacion.objects.count()
             data["usuarios_activos"]    = User.objects.filter(activo=True).count()
-            # ── FIX: guard para usuario NULL ──
             if ultima.usuario:
                 data["importador"] = f"{ultima.usuario.nombre} {ultima.usuario.apellido}"
             else:
@@ -304,7 +338,7 @@ class ClientesListView(APIView):
             "Total_dias_consumo":          round(c.total_dias_consumo, 2),
             "Total_consumo_facturado":     round(c.total_consumo, 2),
             "Tarifa_referencia":           c.tarifa_anterior,
-            "Porcon":                     c.porcion or "-",
+            "Porcion":                     c.porcion or "-",
             "Unidad_Predial":              c.unidad_predial or "-",
             "Promedio_diario":             round(c.promedio_diario, 4),
             "Promedio_mensual":            round(c.promedio_mensual, 2),
@@ -342,7 +376,6 @@ class HistorialImportacionesView(APIView):
                 "anomalias":       imp.anomalias,
             }
             if es_admin:
-                # ── FIX: guard para importaciones con usuario eliminado/NULL ──
                 if imp.usuario:
                     item["usuario"] = f"{imp.usuario.nombre} {imp.usuario.apellido}"
                     item["email"]   = imp.usuario.email
@@ -634,7 +667,6 @@ class ComparativaView(APIView):
 
 
 class FiltrosDashboardView(APIView):
-    """Estadísticas filtradas por porción y/o rango de fechas (periodos YYYY-MM)"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):

@@ -1,38 +1,50 @@
 import pandas as pd
 import numpy as np
+from datetime import date
+from dateutil.relativedelta import relativedelta
 
 # =====================
 # CONFIGURACIÓN GENERAL
 # =====================
-TARIFAS_VIGENTES = ["REG-A1-CO", "REG-A2-CO", "REG-B-CO"]
-NUM_MESES = 6
+TARIFAS_VIGENTES  = ["REG-A1-CO", "REG-A2-CO", "REG-B-CO"]
+NUM_MESES         = 6
 DIAS_ESTANDAR_MES = 30.41
-UMBRALES_TARIFAS = {"A1_max": 30, "A2_max": 300}
+UMBRALES_TARIFAS  = {"A1_max": 30, "A2_max": 300}
+
 CODIGOS_EVENTOS = {
-    "periodica": 1,
-    "corte": 13,
-    "reconexion": 18,
-    "desmontaje": 22,
-    "montaje": 21
+    "periodica"  : 1,
+    "corte"      : 13,
+    "reconexion" : 18,
+    "desmontaje" : 22,
+    "montaje"    : 21,
 }
 LECTURAS_VALIDAS = list(CODIGOS_EVENTOS.values())
 
 
+# ══════════════════════════════════════════════════════════════
+#  CARGA DE ARCHIVOS
+# ══════════════════════════════════════════════════════════════
+
 def cargar_excel(archivo_lectura):
+    """Carga archivos de lecturas (carpeta 01)."""
     df_lectura = pd.read_excel(archivo_lectura, header=5)
+
     campos_lectura = [
         "Cuenta contrato", "Instalación", "Fecha de lectura",
         "Fecha de lectura anterior", "Lectura", "Lectura Anterior",
-        "Días de consumo", "Consumo m3", "Presión de Medida",
-        "Factor de Corrección", "Consumo facturado.", "Tipo de tarifa",
-        "Clase de lectura", "Motivo de lectura", "Descripción ML.1",
-        "Porción", "Unidad Predial"
+        "Presión de Medida", "Factor de Corrección",
+        "Tipo de tarifa", "Clase de lectura", "Motivo de lectura",
+        "Descripción ML.1", "Porción", "Unidad Predial",
     ]
-    df_lectura_clean = df_lectura[campos_lectura].copy()
+    # Solo columnas que existan
+    campos_ok = [c for c in campos_lectura if c in df_lectura.columns]
+    df_lectura_clean = df_lectura[campos_ok].copy()
 
-    # Facturación derivada del archivo de lecturas (fallback)
+    # Facturación derivada (fallback cuando no hay archivos externos)
+    col_consumo = "Consumo facturado." if "Consumo facturado." in df_lectura.columns else None
     df_facturacion_clean = df_lectura[[
-        "Cuenta contrato", "Tipo de tarifa", "Fecha de lectura", "Consumo facturado."
+        "Cuenta contrato", "Tipo de tarifa", "Fecha de lectura",
+        *(["Consumo facturado."] if col_consumo else [])
     ]].copy()
     df_facturacion_clean = df_facturacion_clean.rename(columns={
         "Cuenta contrato":    "Cuenta Contrato",
@@ -41,23 +53,30 @@ def cargar_excel(archivo_lectura):
         "Consumo facturado.": "Volumen Facturado",
     })
     df_facturacion_clean["Clase de Lectura"] = 1
-    df_facturacion_clean["Porción"] = df_lectura["Porción"]
+    if "Porción" in df_lectura.columns:
+        df_facturacion_clean["Porción"] = df_lectura["Porción"].values
 
     return df_lectura_clean, df_facturacion_clean
 
 
 def cargar_excel_facturacion(archivo_facturacion):
-    """Carga archivos de la carpeta 03. Reportes resumen de facturación"""
+    """Carga archivos de facturación externos (carpeta 03)."""
     df = pd.read_excel(archivo_facturacion)
-    campos = ["Cuenta Contrato", "Volumen Facturado", "Tipo de tarifa de facturación",
-              "Fecha de contabilización", "Clase de Lectura", "Porción"]
-    # Solo tomar columnas que existan
-    campos_existentes = [c for c in campos if c in df.columns]
-    df_clean = df[campos_existentes].copy()
-    return df_clean
+    campos = [
+        "Cuenta Contrato", "Volumen Facturado",
+        "Tipo de tarifa de facturación",
+        "Fecha de contabilización", "Clase de Lectura", "Porción",
+    ]
+    campos_ok = [c for c in campos if c in df.columns]
+    return df[campos_ok].copy()
 
+
+# ══════════════════════════════════════════════════════════════
+#  LIMPIEZA
+# ══════════════════════════════════════════════════════════════
 
 def limpiar_datos(df_lectura_clean, df_facturacion_clean):
+    # Fechas
     df_lectura_clean["Fecha de lectura"] = pd.to_datetime(
         df_lectura_clean["Fecha de lectura"], errors="coerce"
     ).dt.normalize()
@@ -65,16 +84,29 @@ def limpiar_datos(df_lectura_clean, df_facturacion_clean):
         df_lectura_clean["Fecha de lectura anterior"], errors="coerce"
     ).dt.normalize()
 
+    # Instalación
+    df_lectura_clean["Instalación"] = (
+        df_lectura_clean["Instalación"]
+        .astype(float).astype(int).astype(str).str.strip()
+    )
+
+    # Cuenta contrato
     df_lectura_clean["Cuenta contrato"] = (
         df_lectura_clean["Cuenta contrato"]
         .astype(float).astype(int).astype(str).str.strip()
     )
+
+    # Motivo de lectura
     df_lectura_clean["Motivo de lectura"] = pd.to_numeric(
         df_lectura_clean["Motivo de lectura"], errors="coerce"
     )
-    for col in ["Lectura", "Lectura Anterior", "Factor de Corrección"]:
-        df_lectura_clean[col] = pd.to_numeric(df_lectura_clean[col], errors="coerce")
 
+    # Columnas numéricas
+    for col in ["Lectura", "Lectura Anterior", "Factor de Corrección"]:
+        if col in df_lectura_clean.columns:
+            df_lectura_clean[col] = pd.to_numeric(df_lectura_clean[col], errors="coerce")
+
+    # Facturación
     df_facturacion_clean["Cuenta Contrato"] = (
         df_facturacion_clean["Cuenta Contrato"]
         .astype(float).astype(int).astype(str).str.strip()
@@ -86,6 +118,7 @@ def limpiar_datos(df_lectura_clean, df_facturacion_clean):
         df_facturacion_clean["Fecha de contabilización"], errors="coerce"
     ).dt.normalize()
 
+    # Reconstruir fecha anterior
     df_lectura_clean = (
         df_lectura_clean
         .sort_values(["Instalación", "Fecha de lectura"])
@@ -109,7 +142,7 @@ def limpiar_datos(df_lectura_clean, df_facturacion_clean):
 
 
 def limpiar_facturacion_externa(df_facturacion):
-    """Limpia archivos de facturación externos (carpeta 03)"""
+    """Limpia archivos de facturación externos (carpeta 03)."""
     df = df_facturacion.copy()
     if "Cuenta Contrato" in df.columns:
         df = df.rename(columns={"Cuenta Contrato": "Cuenta contrato"})
@@ -123,10 +156,21 @@ def limpiar_facturacion_externa(df_facturacion):
     return df
 
 
+# ══════════════════════════════════════════════════════════════
+#  FUNCIONES AUXILIARES
+# ══════════════════════════════════════════════════════════════
+
 def _redondear(valor):
-    parte_entera  = int(valor)
-    parte_decimal = valor - parte_entera
-    return parte_entera if parte_decimal <= 0.5 else parte_entera + 1
+    """Regla: <= 0.5 baja, >= 0.6 sube."""
+    if pd.isna(valor):
+        return 0
+    p = int(valor)
+    d = valor - p
+    if d <= 0.5:
+        return p
+    if d >= 0.6:
+        return p + 1
+    return p
 
 
 def _asignar_tarifa(promedio):
@@ -137,108 +181,125 @@ def _asignar_tarifa(promedio):
     return "REG-B-CO"
 
 
-def _calcular_consumo_mensual(grupo):
-    grupo = grupo.sort_values("Fecha de lectura")
-    lectura_anterior  = grupo["Lectura Anterior"].iloc[0]
-    lectura_actual    = grupo["Lectura"].iloc[-1]
-    primer_registro   = grupo.iloc[0]
-    numero_mes        = grupo["numero_mes_ventana"].iloc[0]
+# ══════════════════════════════════════════════════════════════
+#  MOTOR DE CÁLCULO — calcular_consumo_maestro (Jesús v5)
+# ══════════════════════════════════════════════════════════════
 
-    periodica  = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["periodica"]]
-    corte      = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["corte"]]
-    reconexion = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["reconexion"]]
-    desmontaje = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["desmontaje"]]
-    montaje    = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["montaje"]]
+def calcular_consumo_maestro(grupo):
+    """
+    Motor de cálculo de consumo por pares de lecturas periódicas consecutivas.
+    Equivalente exacto al Código 2 del notebook de Jesús.
+    """
+    grupo = grupo.sort_values("Fecha de lectura").reset_index(drop=True)
+    resultados = []
 
-    lectura_periodica = periodica["Lectura"].iloc[-1]          if not periodica.empty else None
-    fecha_periodica   = periodica["Fecha de lectura"].iloc[-1] if not periodica.empty else None
-    n_desmontajes     = len(desmontaje)
-    n_montajes        = len(montaje)
+    periodicas = grupo[grupo["Motivo de lectura"] == CODIGOS_EVENTOS["periodica"]].copy()
 
-    if numero_mes == NUM_MESES and not periodica.empty and fecha_periodica is not None:
-        eventos_despues = any([
-            len(corte)      > 0 and corte["Fecha de lectura"].iloc[0]      > fecha_periodica,
-            len(reconexion) > 0 and reconexion["Fecha de lectura"].iloc[0] > fecha_periodica,
-            len(desmontaje) > 0 and desmontaje["Fecha de lectura"].iloc[0] > fecha_periodica,
-            len(montaje)    > 0 and montaje["Fecha de lectura"].iloc[0]    > fecha_periodica,
-        ])
-        if eventos_despues:
-            return max(lectura_periodica - lectura_anterior, 0)
+    if len(periodicas) < 2:
+        return pd.DataFrame(resultados)
 
-    if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
-        ultima_fecha_d = desmontaje["Fecha de lectura"].max()
-        ultima_fecha_m = montaje["Fecha de lectura"].max()
-        if (ultima_fecha_d < fecha_periodica) and (ultima_fecha_m < fecha_periodica):
-            d_ord = desmontaje.sort_values("Fecha de lectura")
-            m_ord = montaje.sort_values("Fecha de lectura")
-            D1, D2 = d_ord["Lectura"].iloc[0], d_ord["Lectura"].iloc[1]
-            M1, M2 = m_ord["Lectura"].iloc[0], m_ord["Lectura"].iloc[1]
-            return max((D1 - lectura_anterior) + (D2 - M1) + (lectura_periodica - M2), 0)
+    for i in range(1, len(periodicas)):
+        row_fin = periodicas.iloc[i]
+        row_ini = periodicas.iloc[i - 1]
 
-    if n_desmontajes >= 2 and n_montajes >= 2 and not periodica.empty and fecha_periodica is not None:
-        primera_d   = desmontaje["Fecha de lectura"].min()
-        ultima_d    = desmontaje["Fecha de lectura"].max()
-        primera_m   = montaje["Fecha de lectura"].min()
-        ultima_m    = montaje["Fecha de lectura"].max()
-        hay_antes   = (primera_d < fecha_periodica) or (primera_m < fecha_periodica)
-        hay_despues = (ultima_d  > fecha_periodica) or (ultima_m  > fecha_periodica)
-        if hay_antes and hay_despues:
-            d_antes = desmontaje[desmontaje["Fecha de lectura"] <= fecha_periodica]
-            m_antes = montaje[montaje["Fecha de lectura"]       <= fecha_periodica]
-            if len(d_antes) > 0 and len(m_antes) > 0:
-                return max(
-                    (d_antes["Lectura"].iloc[0] - lectura_anterior) +
-                    (lectura_periodica - m_antes["Lectura"].iloc[0]), 0
-                )
-            return max(lectura_periodica - lectura_anterior, 0)
+        fecha_ini    = row_ini["Fecha de lectura"]
+        fecha_fin    = row_fin["Fecha de lectura"]
+        lec_ini      = row_ini["Lectura"]
+        lec_fin      = row_fin["Lectura"]
+        dias_totales = (fecha_fin - fecha_ini).days
 
-    lec_corte      = corte["Lectura"].iloc[0]      if len(corte)      > 0 else None
-    lec_reconexion = reconexion["Lectura"].iloc[0] if len(reconexion) > 0 else None
-    lec_desmontaje = desmontaje["Lectura"].iloc[0] if n_desmontajes   > 0 else None
-    lec_montaje    = montaje["Lectura"].iloc[0]    if n_montajes      > 0 else None
+        mask    = (
+            (grupo["Fecha de lectura"] > fecha_ini) &
+            (grupo["Fecha de lectura"] < fecha_fin)
+        )
+        eventos = grupo[mask].copy()
 
-    if n_desmontajes > 1 or n_montajes > 1:
-        return max(lectura_actual - lectura_anterior, 0)
+        volumen   = 0.0
+        escenario = "1. Periódica Normal"
 
-    mot_ant = primer_registro["Motivo_Registro_Anterior"]
-    if mot_ant == CODIGOS_EVENTOS["corte"] and lec_reconexion is not None:
-        corte_hist = primer_registro["Lectura_Registro_Anterior"]
-        base_hist  = primer_registro["Lectura_Anterior_Registro_Anterior"]
-        lec_final  = lectura_periodica if lectura_periodica is not None else lectura_actual
-        return max((corte_hist - base_hist) + (lec_final - lec_reconexion), 0)
+        tiene_corte = CODIGOS_EVENTOS["corte"]      in eventos["Motivo de lectura"].values
+        tiene_recon = CODIGOS_EVENTOS["reconexion"] in eventos["Motivo de lectura"].values
+        tiene_des   = CODIGOS_EVENTOS["desmontaje"] in eventos["Motivo de lectura"].values
+        tiene_mon   = CODIGOS_EVENTOS["montaje"]    in eventos["Motivo de lectura"].values
 
-    if mot_ant == CODIGOS_EVENTOS["desmontaje"] and lec_montaje is not None:
-        desm_hist = primer_registro["Lectura_Registro_Anterior"]
-        base_hist = primer_registro["Lectura_Anterior_Registro_Anterior"]
-        lec_final = lectura_periodica if lectura_periodica is not None else lectura_actual
-        return max((desm_hist - base_hist) + (lec_final - lec_montaje), 0)
+        if tiene_des and tiene_mon:
+            ev_cambio = eventos[
+                eventos["Motivo de lectura"].isin([22, 21])
+            ].sort_values("Fecha de lectura")
+            tramos, base = [], lec_ini
 
-    if lec_desmontaje is not None and lec_montaje is not None:
-        return max((lec_desmontaje - lectura_anterior) + (lectura_actual - lec_montaje), 0)
-    if lec_desmontaje is not None:
-        return max(lec_desmontaje - lectura_anterior, 0)
-    if lec_montaje is not None:
-        return max(lectura_actual - lec_montaje, 0)
-    if lec_corte is not None and lec_reconexion is not None:
-        return max((lec_corte - lectura_anterior) + (lectura_actual - lec_reconexion), 0)
-    if lec_corte is not None:
-        return max(lec_corte - lectura_anterior, 0)
-    if lec_reconexion is not None:
-        return max(lectura_actual - lec_reconexion, 0)
-    if lectura_periodica is not None:
-        return max(lectura_periodica - lectura_anterior, 0)
+            for _, ev in ev_cambio.iterrows():
+                if ev["Motivo de lectura"] == 22:
+                    tramos.append(max(0, ev["Lectura"] - base))
+                    base = None
+                elif ev["Motivo de lectura"] == 21 and base is None:
+                    base = ev["Lectura"]
 
-    return max(lectura_actual - lectura_anterior, 0)
+            if base is not None:
+                tramos.append(max(0, lec_fin - base))
+            else:
+                tramos.append(max(0, lec_fin - lec_ini))
 
+            volumen   = sum(tramos)
+            escenario = f"7. Multi-Ciclo ({len(tramos)} tramos)"
+
+        elif tiene_corte and tiene_recon:
+            lec_c     = eventos[eventos["Motivo de lectura"] == 13]["Lectura"].iloc[-1]
+            lec_r     = eventos[eventos["Motivo de lectura"] == 18]["Lectura"].iloc[0]
+            volumen   = max(0, lec_c - lec_ini) + max(0, lec_fin - lec_r)
+            escenario = "4. Corte + Reconexión"
+
+        elif tiene_corte and not tiene_recon:
+            lec_c     = eventos[eventos["Motivo de lectura"] == 13]["Lectura"].iloc[-1]
+            volumen   = max(0, lec_c - lec_ini) + max(0, lec_fin - lec_c)
+            escenario = "2. Solo Corte"
+
+        elif tiene_recon and not tiene_corte:
+            lec_r     = eventos[eventos["Motivo de lectura"] == 18]["Lectura"].iloc[0]
+            volumen   = max(0, lec_r - lec_ini) + max(0, lec_fin - lec_r)
+            escenario = "3. Solo Reconexión"
+
+        else:
+            volumen = max(0, lec_fin - lec_ini)
+
+        factor = row_fin["Factor de Corrección"] if pd.notna(row_fin["Factor de Corrección"]) else 1.0
+
+        resultados.append({
+            "Cuenta contrato"             : row_fin["Cuenta contrato"],
+            "Instalación"                 : row_fin["Instalación"],
+            "Fecha periódica"             : fecha_fin,
+            "Periodo"                     : row_fin["Fecha de lectura"].to_period("M"),
+            "Días de consumo calculado"   : dias_totales,
+            "Consumo m3 calculado"        : volumen,
+            "Factor de Corrección"        : factor,
+            "Consumo facturado calculado" : volumen * factor,
+            "Escenario"                   : escenario,
+            "Tipo de tarifa"              : row_fin["Tipo de tarifa"],
+            "Clase de lectura"            : row_fin["Clase de lectura"],
+            "Motivo de lectura"           : row_fin["Motivo de lectura"],
+            "Porción"                     : row_fin.get("Porción"),
+            "Unidad Predial"              : row_fin.get("Unidad Predial"),
+        })
+
+    return pd.DataFrame(resultados)
+
+
+# ══════════════════════════════════════════════════════════════
+#  ETL PRINCIPAL
+# ══════════════════════════════════════════════════════════════
 
 def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean, df_facturacion_externa=None):
     """
-    df_facturacion_externa: DataFrame de archivos de la carpeta 03. Reportes resumen de facturación
-                            Si se proporciona, se usa para la tarifa referencia (más preciso).
-                            Si es None, se usa df_facturacion_clean derivado de lecturas (fallback).
+    Ejecuta el proceso completo de recategorización volumétrica.
+    Usa el motor calcular_consumo_maestro del notebook de Jesús (v5).
+
+    Retorna: cuadro_2, cuadro_3, cuadro_4, cuadro_5, df_mensual
     """
 
-    df = df_lectura_clean.sort_values(["Instalación", "Fecha de lectura"]).reset_index(drop=True)
+    # ── PASO 1: Referencias históricas ───────────────────────────────────────
+    df = df_lectura_clean.sort_values(
+        ["Instalación", "Fecha de lectura"]
+    ).reset_index(drop=True)
 
     for col, base in [
         ("Lectura_Registro_Anterior",          "Lectura"),
@@ -248,320 +309,388 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean, df_factura
     ]:
         df[col] = df.groupby("Instalación")[base].shift(1)
 
-    df["Consumo m3 calculado"] = (df["Lectura"] - df["Lectura Anterior"]).clip(lower=0)
-    df["Días de consumo calculado"] = (
-        (df["Fecha de lectura"] - df["Fecha de lectura anterior"])
-        .dt.days.fillna(0).clip(lower=0).astype(float)
-    )
-    df["Consumo facturado calculado"] = df["Consumo m3 calculado"] * df["Factor de Corrección"]
-    df["Periodo"] = df["Fecha de lectura"].dt.to_period("M")
-    df_facturacion_clean["Periodo"] = df_facturacion_clean["Fecha de contabilización"].dt.to_period("M")
+    print("✅ Referencias históricas generadas")
 
-    # ── FUENTE DE FACTURACIÓN ─────────────────────────────────────────────────
-    # Si se proporcionan archivos externos de facturación (carpeta 03), usarlos
-    # De lo contrario usar el fallback derivado de lecturas
+    # ── PASO 1.5: Periodos ────────────────────────────────────────────────────
+    df["Periodo"] = df["Fecha de lectura"].dt.to_period("M")
+
     if df_facturacion_externa is not None:
-        df_facturacion_externa["Periodo"] = df_facturacion_externa["Fecha de contabilización"].dt.to_period("M")
-        df_fact_para_tarifa = df_facturacion_externa
+        df_fact = df_facturacion_externa.copy()
         print("   📊 Usando archivos de facturación externos")
     else:
-        df_fact_para_tarifa = df_facturacion_clean
+        df_fact = df_facturacion_clean.copy()
         print("   📊 Usando tarifa derivada de archivos de lectura (fallback)")
 
-    # ── VENTANA FIJA DE 6 MESES ───────────────────────────────────────────────
-    ultimo_periodo   = df["Periodo"].max()
-    meses_a_usar     = NUM_MESES
-    periodos_validos = pd.period_range(end=ultimo_periodo, periods=meses_a_usar, freq="M")
+    df_fact["Periodo_Fact"] = df_fact["Fecha de contabilización"].dt.to_period("M")
 
-    # ── TARIFA REFERENCIA: última tarifa de facturación ───────────────────────
-    # Igual que el notebook: última tarifa global sin filtro de vigencia
+    # ── PASO 1.6: Tarifa por mes desde facturación (merge por cuenta+periodo) ─
     df_tarifa_ref = (
-        df_fact_para_tarifa
-        .sort_values(["Cuenta contrato", "Periodo"])
-        .groupby("Cuenta contrato")
-        .tail(1)[["Cuenta contrato", "Tipo de tarifa de facturación"]]
-        .rename(columns={"Tipo de tarifa de facturación": "Tarifa referencia"})
+        df_fact
+        .sort_values(["Cuenta contrato", "Fecha de contabilización"])
+        .groupby(["Cuenta contrato", "Periodo_Fact"])["Tipo de tarifa de facturación"]
+        .last()
+        .reset_index()
+        .rename(columns={
+            "Tipo de tarifa de facturación": "Tarifa_Fact",
+            "Periodo_Fact"                 : "Periodo",
+        })
     )
 
-    df = df.merge(df_tarifa_ref, on="Cuenta contrato", how="left")
+    df = df.merge(df_tarifa_ref, on=["Cuenta contrato", "Periodo"], how="left")
+    df["Tipo de tarifa"]    = df["Tarifa_Fact"].fillna(df["Tipo de tarifa"])
+    df = df.drop(columns=["Tarifa_Fact"], errors="ignore")
+    df["Tarifa referencia"] = df["Tipo de tarifa"]
 
+    print(f"   • Tarifas asignadas: {df['Tarifa referencia'].notna().sum():,}")
+
+    # ── PASO 1.7: Estado inicial ──────────────────────────────────────────────
     df["Estado inicial"] = np.select(
-        [df["Tarifa referencia"].isna(), ~df["Tarifa referencia"].isin(TARIFAS_VIGENTES)],
+        [
+            df["Tarifa referencia"].isna(),
+            ~df["Tarifa referencia"].isin(TARIFAS_VIGENTES),
+        ],
         ["Cliente nuevo", "Tarifa no aplicable"],
         default="Válido"
     )
+    print("✅ Estado inicial validado")
+
+    # ── PASO 2: Cálculos base (para snapshot) ────────────────────────────────
+    df["Consumo m3 calculado"]        = (df["Lectura"] - df["Lectura Anterior"]).clip(lower=0)
+    df["Días de consumo calculado"]   = (
+        df["Fecha de lectura"] - df["Fecha de lectura anterior"]
+    ).dt.days
+    df["Consumo facturado calculado"] = df["Consumo m3 calculado"] * df["Factor de Corrección"]
+
+    df_todos = df.copy()
+    print(f"   • Total registros (snapshot): {len(df_todos):,}")
+
+    # ── PASO 3: Ventana de 6 meses ────────────────────────────────────────────
+    fecha_max        = df["Fecha de lectura"].max()
+    fecha_inicio     = fecha_max - relativedelta(months=5)
+    periodos_validos = pd.period_range(
+        start=fecha_inicio.to_period("M"),
+        end=fecha_max.to_period("M"),
+        freq="M"
+    )
+    print(f"✅ Ventana: {periodos_validos[0]} → {periodos_validos[-1]}")
 
     df_para_calculos = df[df["Periodo"].isin(periodos_validos)].copy()
 
-    lecturas_validas_mask = df_para_calculos[
-        df_para_calculos["Motivo de lectura"].isin(LECTURAS_VALIDAS)
-    ]
+    # ── PASO 4: Validar clientes aptos ───────────────────────────────────────
     conteo_periodos = (
-        lecturas_validas_mask.groupby("Instalación")["Periodo"]
-        .nunique().reset_index()
-        .rename(columns={"Periodo": "meses_en_ventana"})
+        df_para_calculos.groupby("Instalación")["Periodo"]
+        .nunique().reset_index(name="meses_en_ventana")
     )
     df_para_calculos = df_para_calculos.merge(conteo_periodos, on="Instalación", how="left")
     df_para_calculos["Apto"] = (
-        (df_para_calculos["meses_en_ventana"] >= meses_a_usar) &
-        (df_para_calculos["Estado inicial"] == "Válido")
+        (df_para_calculos["meses_en_ventana"] >= NUM_MESES) &
+        (df_para_calculos["Tarifa referencia"].isin(TARIFAS_VIGENTES))
     )
 
-    df_validos = df_para_calculos[df_para_calculos["Apto"]].copy()
-    df_validos["Días de consumo calculado"] = (
-        (df_validos["Fecha de lectura"] - df_validos["Fecha de lectura anterior"])
-        .dt.days.fillna(0).clip(lower=0).astype(float)
-    )
+    df_validos       = df_para_calculos[df_para_calculos["Apto"]].copy()
+    df_no_aptos_base = df_para_calculos[~df_para_calculos["Apto"]].copy()
 
+    print(f"✅ Aptos    : {df_validos['Instalación'].nunique():,}")
+    print(f"⚠️  No aptos : {df_no_aptos_base['Instalación'].nunique():,}")
+
+    # ── PASO 4.1: Validación de histórico ────────────────────────────────────
     primer_mes = (
         df_validos.sort_values(["Instalación", "Periodo"])
-        .groupby("Instalación").first().reset_index()
-        [["Instalación", "Motivo de lectura"]]
+        .groupby("Instalación").first()
+        .reset_index()[["Instalación", "Motivo de lectura"]]
     )
     primer_mes["requiere_historico"] = primer_mes["Motivo de lectura"].isin([13, 18, 21, 22])
+
     df_validos = df_validos.merge(
         primer_mes[["Instalación", "requiere_historico"]], on="Instalación", how="left"
     )
     df_validos["historico_valido"] = (
         ~df_validos["requiere_historico"] |
-        (df_validos["Lectura_Registro_Anterior"].notna() &
-         df_validos["Motivo_Registro_Anterior"].isin(LECTURAS_VALIDAS))
+        (
+            df_validos["Lectura_Registro_Anterior"].notna() &
+            df_validos["Motivo_Registro_Anterior"].isin(LECTURAS_VALIDAS)
+        )
     )
     df_validos = df_validos[
-        ~((df_validos["requiere_historico"] == True) &
-          (df_validos["historico_valido"] == False))
+        ~(df_validos["requiere_historico"] & ~df_validos["historico_valido"])
+    ].copy()
+    print("✅ Validación de histórico completada")
+
+    # ── PASO 4.2: Tarifa del Mes 5 ───────────────────────────────────────────
+    periodo_mes5 = periodos_validos[-2]
+    tarifas_m5   = (
+        df_validos[df_validos["Periodo"] == periodo_mes5]
+        .groupby("Instalación")["Tarifa referencia"]
+        .first()
+        .to_dict()
+    )
+    periodo_ultimo_str = str(periodos_validos[-1])
+    print(f"   • Tarifas Mes 5 guardadas: {len(tarifas_m5):,}")
+
+    # ── PASO 5: Motor de cálculo (calcular_consumo_maestro de Jesús) ─────────
+    print("\n📂 Ejecutando motor de cálculo (Jesús v5)...")
+
+    instalaciones_aptas = set(df_validos["Instalación"].unique())
+    df_motor = df[df["Instalación"].isin(instalaciones_aptas)].copy()
+
+    resultados_lista = []
+    for instalacion, grupo in df_motor.groupby("Instalación", sort=False):
+        res = calcular_consumo_maestro(grupo)
+        if not res.empty:
+            resultados_lista.append(res)
+
+    df_resultados = (
+        pd.concat(resultados_lista, ignore_index=True)
+        if resultados_lista else pd.DataFrame()
+    )
+
+    # Filtrar a ventana válida
+    df_resultados = df_resultados[
+        df_resultados["Periodo"].isin(periodos_validos)
     ].copy()
 
-    df_validos["Días de consumo calculado"] = (
-        (df_validos["Fecha de lectura"] - df_validos["Fecha de lectura anterior"])
-        .dt.days.fillna(0).clip(lower=0).astype(float)
+    # numero_mes_ventana
+    lista_periodos = list(periodos_validos)
+    df_resultados["numero_mes_ventana"] = df_resultados["Periodo"].apply(
+        lambda x: lista_periodos.index(x) + 1 if x in lista_periodos else None
     )
 
-    df_validos = df_validos.sort_values(["Instalación", "Periodo"])
-    df_validos["numero_mes_ventana"] = (
-        df_validos.groupby("Instalación")["Periodo"]
-        .transform(lambda x: pd.factorize(x)[0] + 1)
-    )
+    # Regla Mes 6 = tarifa del Mes 5
+    df_resultados = df_resultados.sort_values(["Instalación", "Periodo"])
 
-    # ── CONSUMO MENSUAL: groupby.apply exacto igual al notebook ──────────────
-    EVENTOS = [13, 18, 22, 21]
-    inst_complejas = set(
-        df_validos[df_validos["Motivo de lectura"].isin(EVENTOS)]["Instalación"].unique()
-    )
-    df_simples   = df_validos[~df_validos["Instalación"].isin(inst_complejas)].copy()
-    df_complejos = df_validos[df_validos["Instalación"].isin(inst_complejas)].copy()
+    def _aplicar_regla_m6(row):
+        if str(row["Periodo"]) == periodo_ultimo_str:
+            return tarifas_m5.get(row["Instalación"], row["Tipo de tarifa"])
+        return row["Tipo de tarifa"]
 
-    print(f"   ⚡ Simples (vectorizado): {df_simples['Instalación'].nunique():,}")
-    print(f"   🔧 Complejos (apply):     {df_complejos['Instalación'].nunique():,}")
+    df_resultados["Tipo de tarifa"]   = df_resultados.apply(_aplicar_regla_m6, axis=1)
+    df_resultados["Tarifa referencia"] = df_resultados["Tipo de tarifa"]
 
-    # Simples: apply igual al notebook
-    df_consumo_simples = (
-        df_simples.groupby(["Instalación", "Periodo"])
-        .apply(_calcular_consumo_mensual, include_groups=False)
-        .reset_index(name="Consumo m3 ajustado")
-    )
+    print(f"✅ Motor completado: {len(df_resultados):,} intervalos calculados")
 
-    # Complejos: apply igual al notebook
-    df_consumo_complejos = (
-        df_complejos.groupby(["Instalación", "Periodo"])
-        .apply(_calcular_consumo_mensual, include_groups=False)
-        .reset_index(name="Consumo m3 ajustado")
-    )
-
-    df_consumo_mensual = pd.concat(
-        [df_consumo_simples, df_consumo_complejos], ignore_index=True
-    )
-    print("   ✅ Consumo mensual calculado")
-
-    dias_backup = (
-        df_validos.groupby(["Instalación", "Periodo"])["Días de consumo calculado"]
-        .sum().reset_index()
-    )
-
-    df_mensual = (
-        df_validos.groupby(["Instalación", "Periodo"], as_index=False)
-        .agg({
-            "Cuenta contrato":      "first",
-            "Factor de Corrección": "mean",
-            "Tarifa referencia":    "first",
-            "Porción":              "first",
-            "Unidad Predial":       "first",
-        })
-    )
-    df_mensual = df_mensual.merge(df_consumo_mensual, on=["Instalación", "Periodo"], how="left")
-    df_mensual = df_mensual.merge(dias_backup,         on=["Instalación", "Periodo"], how="left")
-    df_mensual["Días de consumo calculado"] = (
-        pd.to_numeric(df_mensual["Días de consumo calculado"], errors="coerce").fillna(0).clip(lower=0)
-    )
-    df_mensual["Consumo_mes"] = (
-        df_mensual["Consumo m3 ajustado"] * df_mensual["Factor de Corrección"]
-    ).clip(lower=0)
-    df_mensual = df_mensual.rename(columns={
-        "Cuenta contrato":           "Cuenta_contrato",
-        "Días de consumo calculado": "Dias_mes",
-        "Tarifa referencia":         "Tarifa_referencia",
-        "Porción":                   "Porcion",
-        "Unidad Predial":            "Unidad_Predial",
-    })
-
-    # CUADRO 2
-    cuadro_2 = (
-        df_mensual.groupby("Instalación")
+    # ── PASO 5.5: Agregación mensual ─────────────────────────────────────────
+    df_mensual_raw = (
+        df_resultados
+        .groupby(["Instalación", "Periodo"], as_index=False)
         .agg(
-            Cuenta_contrato         =("Cuenta_contrato",          "first"),
-            Total_dias_consumo      =("Dias_mes",                 "sum"),
-            Total_consumo_facturado =("Consumo_mes",              "sum"),
-            Tarifa_referencia       =("Tarifa_referencia",        "first"),
-            Porcion                 =("Porcion",                  "first"),
-            Unidad_Predial          =("Unidad_Predial",           "first"),
+            Cuenta_contrato   =("Cuenta contrato",             "first"),
+            Factor_Correccion =("Factor de Corrección",        "mean"),
+            Dias_mes          =("Días de consumo calculado",   "sum"),
+            Consumo_mes       =("Consumo facturado calculado", "sum"),
+            Tarifa_referencia =("Tarifa referencia",           "first"),
+            Porcion           =("Porción",                     "first"),
+            Unidad_Predial    =("Unidad Predial",              "first"),
+            numero_mes_ventana=("numero_mes_ventana",          "first"),
+        )
+    )
+    df_mensual_raw["Dias_mes"]    = (
+        pd.to_numeric(df_mensual_raw["Dias_mes"], errors="coerce").fillna(0).clip(lower=0)
+    )
+    df_mensual_raw["Consumo_mes"] = df_mensual_raw["Consumo_mes"].clip(lower=0)
+
+    # Agregar columna Instalación como string para compatibilidad con backend
+    df_mensual = df_mensual_raw.copy()
+    df_mensual["Período"] = df_mensual["Periodo"].astype(str)
+    # Renombrar para compatibilidad con ConsumoMensual del backend
+    df_mensual = df_mensual.rename(columns={"Período": "Periodo"})
+
+    print("✅ Agregación mensual completada")
+
+    # ══════════════════════════════════════════════════════════
+    #  CUADRO 2 — Resultado por instalación (para backend)
+    #  Equivale al Cuadro 4 del notebook de Jesús
+    # ══════════════════════════════════════════════════════════
+    cuadro_2_base = (
+        df_mensual_raw.groupby("Instalación")
+        .agg(
+            Cuenta_contrato         =("Cuenta_contrato",   "first"),
+            Total_dias_consumo      =("Dias_mes",          "sum"),
+            Total_consumo_facturado =("Consumo_mes",       "sum"),
+            Porcion                 =("Porcion",           "first"),
+            Unidad_Predial          =("Unidad_Predial",    "first"),
         ).reset_index()
     )
-    cuadro_2["Promedio_diario"] = (
-        cuadro_2["Total_consumo_facturado"] /
-        cuadro_2["Total_dias_consumo"].replace(0, np.nan)
+
+    # Tarifa referencia = Mes 5 (igual que Jesús)
+    cuadro_2_base["Tarifa_referencia"] = cuadro_2_base["Instalación"].map(tarifas_m5)
+
+    cuadro_2_base["Promedio_diario"] = (
+        cuadro_2_base["Total_consumo_facturado"] /
+        cuadro_2_base["Total_dias_consumo"].replace(0, np.nan)
     ).fillna(0)
-    cuadro_2["Promedio_mensual"]            = cuadro_2["Promedio_diario"] * DIAS_ESTANDAR_MES
-    cuadro_2["Promedio_mensual_redondeado"] = cuadro_2["Promedio_mensual"].apply(_redondear)
-    cuadro_2["Nueva_tarifa"] = cuadro_2["Promedio_mensual_redondeado"].apply(_asignar_tarifa)
-    cuadro_2["Estado"] = np.where(
-        cuadro_2["Nueva_tarifa"] == cuadro_2["Tarifa_referencia"],
+    cuadro_2_base["Promedio_mensual"]            = cuadro_2_base["Promedio_diario"] * DIAS_ESTANDAR_MES
+    cuadro_2_base["Promedio_mensual_redondeado"] = cuadro_2_base["Promedio_mensual"].apply(_redondear)
+    cuadro_2_base["Nueva_tarifa"]                = cuadro_2_base["Promedio_mensual_redondeado"].apply(_asignar_tarifa)
+    cuadro_2_base["Estado"] = np.where(
+        cuadro_2_base["Nueva_tarifa"] == cuadro_2_base["Tarifa_referencia"],
         "Sin cambio", "Recategorizado"
     )
 
-    # CUADRO 3
+    cuadro_2 = cuadro_2_base[[
+        "Instalación", "Cuenta_contrato", "Total_dias_consumo",
+        "Total_consumo_facturado", "Promedio_diario", "Promedio_mensual",
+        "Promedio_mensual_redondeado", "Tarifa_referencia", "Nueva_tarifa",
+        "Estado", "Porcion", "Unidad_Predial",
+    ]]
+
+    print(f"   • Cuadro 2: {len(cuadro_2):,} clientes aptos")
+    print(f"     - Recategorizados : {(cuadro_2['Estado'] == 'Recategorizado').sum():,}")
+    print(f"     - Sin cambio      : {(cuadro_2['Estado'] == 'Sin cambio').sum():,}")
+
+    # ══════════════════════════════════════════════════════════
+    #  CUADRO 3 — Resumen tarifario (para backend)
+    #  Equivale al Cuadro 5 del notebook de Jesús
+    # ══════════════════════════════════════════════════════════
     cuadro_3 = (
         cuadro_2.groupby(["Tarifa_referencia", "Nueva_tarifa"])
         .size().reset_index()
-        .rename(columns={0: "Cantidad_clientes"})
+        .rename(columns={
+            0                 : "Cantidad_clientes",
+            "Tarifa_referencia": "Tarifa_referencia",
+            "Nueva_tarifa"    : "Nueva_tarifa",
+        })
     )
     total_c3 = cuadro_3["Cantidad_clientes"].sum()
-    cuadro_3["Porcentaje"] = cuadro_3["Cantidad_clientes"] / total_c3 * 100
+    cuadro_3["Porcentaje"] = (
+        cuadro_3["Cantidad_clientes"] / total_c3 * 100 if total_c3 > 0 else 0
+    )
 
-    # CUADRO 4
-    df_no_aptos = df_para_calculos[~df_para_calculos["Apto"]].copy()
-
+    # ══════════════════════════════════════════════════════════
+    #  CUADRO 4 — Clientes no aptos (para backend)
+    #  Equivale al Cuadro 6 del notebook de Jesús
+    # ══════════════════════════════════════════════════════════
     def _observacion(row):
         obs = []
-        if pd.notna(row.get("meses_en_ventana")) and row["meses_en_ventana"] < meses_a_usar:
-            obs.append(f"Menos de 6 meses de historial ({int(row['meses_en_ventana'])} meses)")
-        if row["Estado inicial"] == "Tarifa no aplicable":
-            obs.append(f"Tarifa no válida para recategorización ({row['Tarifa referencia']})")
-        elif row["Estado inicial"] == "Cliente nuevo":
-            obs.append("Cliente nuevo sin historial de facturación")
-        if row.get("requiere_historico") and not row.get("historico_valido"):
-            obs.append("Evento operativo sin lectura histórica válida")
-        if pd.isna(row.get("Factor de Corrección")) or pd.isna(row.get("Lectura")):
-            obs.append("Datos incompletos para cálculo")
-        return "; ".join(obs) if obs else "No cumple criterios de elegibilidad"
+        if row.get("Tarifa referencia") not in TARIFAS_VIGENTES:
+            obs.append("Tarifa no vigente")
+        meses = row.get("meses_en_ventana", 0)
+        if pd.notna(meses) and int(meses) < NUM_MESES:
+            obs.append(f"Menos de 6 meses ({int(meses)})")
+        return "; ".join(obs) if obs else "No cumple criterios"
 
-    df_no_aptos["Observación"] = df_no_aptos.apply(_observacion, axis=1)
+    if not df_no_aptos_base.empty:
+        no_aptos_uniq = df_no_aptos_base.groupby("Instalación").first().reset_index()
+        no_aptos_uniq["Observación"]   = no_aptos_uniq.apply(_observacion, axis=1)
+        no_aptos_uniq["Estado inicial"] = "No apto"
+        cuadro_4 = no_aptos_uniq[[
+            "Cuenta contrato", "Instalación", "Tarifa referencia",
+            "Observación", "Porción", "Unidad Predial",
+            "meses_en_ventana", "Estado inicial",
+        ]].copy()
+    else:
+        cuadro_4 = pd.DataFrame(columns=[
+            "Cuenta contrato", "Instalación", "Tarifa referencia",
+            "Observación", "Porción", "Unidad Predial",
+            "meses_en_ventana", "Estado inicial",
+        ])
 
+    # Agregar cuentas fuera de ventana
     cuentas_en_ventana    = set(df_para_calculos["Cuenta contrato"].astype(str).str.strip().unique())
-    cuentas_totales       = set(df["Cuenta contrato"].astype(str).str.strip().unique())
+    cuentas_totales       = set(df_todos["Cuenta contrato"].astype(str).str.strip().unique())
     cuentas_fuera_ventana = cuentas_totales - cuentas_en_ventana
 
     if cuentas_fuera_ventana:
-        df_fuera_ventana = df[
-            df["Cuenta contrato"].astype(str).str.strip().isin(cuentas_fuera_ventana)
-        ][["Cuenta contrato", "Instalación", "Tarifa referencia", "Porción", "Unidad Predial"]].drop_duplicates().copy()
-        df_fuera_ventana["Observación"]      = "Sin lecturas en ventana de evaluación (6 meses)"
-        df_fuera_ventana["meses_en_ventana"] = 0
-        df_fuera_ventana["Estado inicial"]   = "Fuera de ventana"
-        df_no_aptos = pd.concat([df_no_aptos, df_fuera_ventana], ignore_index=True)
+        df_fv = (
+            df_todos[df_todos["Cuenta contrato"].astype(str).str.strip().isin(cuentas_fuera_ventana)]
+            [["Cuenta contrato", "Instalación", "Tarifa referencia", "Porción", "Unidad Predial"]]
+            .drop_duplicates()
+        )
+        df_fv["meses_en_ventana"] = 0
+        df_fv["Estado inicial"]   = "No apto"
+        df_fv["Observación"]      = "Sin lecturas en ventana de evaluación (6 meses)"
+        cuadro_4 = pd.concat([cuadro_4, df_fv], ignore_index=True)
 
-    cuadro_4 = df_no_aptos[[
-        "Cuenta contrato", "Instalación", "Tarifa referencia",
-        "Observación", "Porción", "Unidad Predial",
-        "meses_en_ventana", "Estado inicial"
-    ]].drop_duplicates(subset=["Cuenta contrato", "Instalación"])
+    cuadro_4 = cuadro_4.drop_duplicates(subset=["Cuenta contrato", "Instalación"])
 
-    print(f"   • Cuadro 2: {len(cuadro_2):,} clientes aptos")
     print(f"   • Cuadro 4: {len(cuadro_4):,} clientes no aptos")
-    print(f"   • Total:    {len(cuadro_2) + cuadro_4['Cuenta contrato'].nunique():,}")
 
-    # CUADRO 5
-    df_todos = df.sort_values(["Instalación", "Fecha de lectura"]).copy()
-    df_todos["Lectura_Previa"] = df_todos.groupby("Instalación")["Lectura"].shift(1)
+    # ══════════════════════════════════════════════════════════
+    #  CUADRO 5 — Anomalías (para backend)
+    #  Equivale al Cuadro 7 del notebook de Jesús
+    # ══════════════════════════════════════════════════════════
+    df_an = df_todos.sort_values(["Instalación", "Fecha de lectura"]).copy()
 
-    frames = []
-    eventos_map = {
-        13: "Corte de servicio",
-        18: "Reconexión de servicio",
-        22: "Desmontaje de medidor",
-        21: "Montaje de medidor"
+    for src, dst in [
+        ("Lectura Anterior",          "_LecAnterior_sig"),
+        ("Fecha de lectura anterior", "_FechaAnt_sig"),
+        ("Motivo de lectura",         "_Motivo_sig"),
+        ("Lectura",                   "_Lec_sig"),
+    ]:
+        df_an[dst] = df_an.groupby("Instalación")[src].shift(-1)
+
+    consumo_sig = df_an["_Lec_sig"] - df_an["_LecAnterior_sig"]
+
+    masks_anomalias = {
+        "Ruptura diagonal en Lectura"          : (
+            df_an["Lectura"].notna() & df_an["_LecAnterior_sig"].notna() &
+            ((df_an["Lectura"] - df_an["_LecAnterior_sig"]).abs() > 0.01)
+        ),
+        "Ruptura diagonal en Fecha"            : (
+            df_an["Fecha de lectura"].notna() & df_an["_FechaAnt_sig"].notna() &
+            (df_an["Fecha de lectura"] != df_an["_FechaAnt_sig"])
+        ),
+        "Consumo post-Corte sin Reconexión"    : (
+            (df_an["Motivo de lectura"] == CODIGOS_EVENTOS["corte"]) &
+            (consumo_sig > 0.01) &
+            (df_an["_Motivo_sig"] != CODIGOS_EVENTOS["reconexion"])
+        ),
+        "Consumo post-Desmontaje sin Montaje"  : (
+            (df_an["Motivo de lectura"] == CODIGOS_EVENTOS["desmontaje"]) &
+            (consumo_sig > 0.01) &
+            (df_an["_Motivo_sig"] != CODIGOS_EVENTOS["montaje"])
+        ),
     }
-    for cod, desc in eventos_map.items():
-        mask = df_todos["Motivo de lectura"] == cod
-        if mask.any():
-            tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
-            tmp["Tipo_anomalia"] = desc
-            frames.append(tmp)
 
-    mask = (
-        df_todos["Lectura_Previa"].notna() &
-        df_todos["Lectura Anterior"].notna() &
-        (abs(df_todos["Lectura_Previa"] - df_todos["Lectura Anterior"]) > 0.01)
-    )
-    if mask.any():
-        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura", "Lectura_Previa", "Lectura Anterior"]].copy()
-        tmp["Tipo_anomalia"] = (
-            "Ruptura patrón diagonal (" +
-            tmp["Lectura_Previa"].map("{:.0f}".format) + "≠" +
-            tmp["Lectura Anterior"].map("{:.0f}".format) + ")"
+    partes = []
+    for tipo, mask in masks_anomalias.items():
+        sub = df_an[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
+        sub["desc"] = tipo
+        partes.append(sub)
+
+    if partes:
+        df_an_all = pd.concat(partes, ignore_index=True)
+        cuadro_5_raw = (
+            df_an_all
+            .groupby(["Cuenta contrato", "Instalación"])
+            .agg(
+                Fecha       =("Fecha de lectura", "max"),
+                tipo_concat =("desc", lambda x: "; ".join(sorted(set(x))))
+            )
+            .reset_index()
+            .rename(columns={
+                "Cuenta contrato": "Cuenta_contrato",
+                "Instalación"    : "Instalacion",
+                "tipo_concat"    : "Tipo_anomalia",
+            })
         )
-        tmp = tmp.drop(columns=["Lectura_Previa", "Lectura Anterior"])
-        frames.append(tmp)
-
-    mask = (
-        (df_todos["Lectura"] == df_todos["Lectura Anterior"]) &
-        (df_todos["Consumo m3 calculado"] > 0)
-    )
-    if mask.any():
-        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
-        tmp["Tipo_anomalia"] = "Consumo sin cambio de lectura"
-        frames.append(tmp)
-
-    mask = (
-        df_todos["Lectura_Previa"].notna() &
-        (df_todos["Lectura"] > 0) &
-        ((df_todos["Lectura_Previa"] / df_todos["Lectura"] > 10) |
-         (df_todos["Lectura_Previa"] / df_todos["Lectura"] < 0.1))
-    )
-    if mask.any():
-        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura", "Lectura_Previa", "Lectura"]].copy()
-        tmp["Tipo_anomalia"] = (
-            "Posible error de digitación (" +
-            tmp["Lectura_Previa"].map("{:.0f}".format) + "→" +
-            tmp["Lectura"].map("{:.0f}".format) + ")"
-        )
-        tmp = tmp.drop(columns=["Lectura_Previa", "Lectura"])
-        frames.append(tmp)
-
-    mask = df_todos["Lectura"] < 0
-    if mask.any():
-        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
-        tmp["Tipo_anomalia"] = "Lectura negativa"
-        frames.append(tmp)
-
-    mask = (df_todos["Lectura"] == 0) & (df_todos["Motivo de lectura"] == 1)
-    if mask.any():
-        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
-        tmp["Tipo_anomalia"] = "Lectura periódica en cero"
-        frames.append(tmp)
-
-    mask = df_todos["Consumo m3 calculado"] < 0
-    if mask.any():
-        tmp = df_todos[mask][["Cuenta contrato", "Instalación", "Fecha de lectura"]].copy()
-        tmp["Tipo_anomalia"] = "Consumo negativo"
-        frames.append(tmp)
-
-    if frames:
-        cuadro_5 = pd.concat(frames, ignore_index=True).rename(columns={
-            "Cuenta contrato":  "Cuenta_contrato",
-            "Instalación":      "Instalacion",
-            "Fecha de lectura": "Fecha",
-        })
     else:
-        cuadro_5 = pd.DataFrame(columns=["Cuenta_contrato", "Instalacion", "Fecha", "Tipo_anomalia"])
+        cuadro_5_raw = pd.DataFrame(columns=[
+            "Cuenta_contrato", "Instalacion", "Fecha", "Tipo_anomalia"
+        ])
 
-    return cuadro_2, cuadro_3, cuadro_4, cuadro_5, df_mensual
+    cuadro_5 = cuadro_5_raw
+
+    print(f"   • Cuadro 5: {len(cuadro_5):,} clientes con anomalías")
+
+    # ══════════════════════════════════════════════════════════
+    #  df_mensual final — para tabla ConsumoMensual del backend
+    # ══════════════════════════════════════════════════════════
+    df_mensual_final = df_mensual_raw.copy()
+    df_mensual_final["Periodo"] = df_mensual_final["Periodo"].astype(str)
+    df_mensual_final = df_mensual_final.rename(columns={
+        "Cuenta_contrato"  : "Cuenta_contrato",
+        "Tarifa_referencia": "Tarifa_referencia",
+        "Porcon"           : "Porcion",
+    })
+
+    # Renombrar Instalación a Instalación para que coincida con el backend
+    df_mensual_final = df_mensual_final.rename(columns={
+        "Instalación": "Instalación",
+    })
+
+    print(f"\n✅ PROCESO FINALIZADO")
+    print(f"   Período evaluado : {periodos_validos[0]} → {periodos_validos[-1]}")
+    print(f"   Mes 5 (actual)   : {periodos_validos[-2]}")
+    print(f"   Mes 6 (nuevo)    : {periodos_validos[-1]}")
+
+    return cuadro_2, cuadro_3, cuadro_4, cuadro_5, df_mensual_final
