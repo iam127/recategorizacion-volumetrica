@@ -3,6 +3,9 @@
   flex-direction: column;
   gap: 20px;
   font-family: 'DM Sans', sans-serif;
+  background: #F5F7FA;
+  min-height: 100vh;
+  padding: 24px; 
 }
 
 /* Stats */
@@ -190,6 +193,7 @@
   font-size: 12px;
   font-weight: 700;
   font-family: 'Sora', sans-serif;
+  white-space: nowrap; 
 }
 
 .catA1 {
