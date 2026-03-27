@@ -444,6 +444,15 @@ def ejecutar_recategorizacion(df_lectura_clean, df_facturacion_clean, df_factura
         if resultados_lista else pd.DataFrame()
     )
 
+    # ── Guard: verificar que hay resultados antes de filtrar ──
+    if df_resultados.empty or "Periodo" not in df_resultados.columns:
+        raise ValueError(
+            f"Archivos insuficientes: se necesitan al menos 6 meses de lecturas "
+            f"para ejecutar la recategorización. Solo se detectaron datos para "
+            f"{df_para_calculos['Periodo'].nunique()} período(s). "
+            f"Por favor carga los 7 archivos mensuales."
+        )
+
     # Filtrar a ventana válida
     df_resultados = df_resultados[
         df_resultados["Periodo"].isin(periodos_validos)
