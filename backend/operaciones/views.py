@@ -170,12 +170,26 @@ class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        es_admin = request.user.rol == 'admin'
+        es_admin       = request.user.rol == 'admin'
+        importacion_id = request.query_params.get('importacion_id', '')
 
         if es_admin:
-            ultima = ResultadoImportacion.objects.order_by('-fecha_importacion').first()
+            if importacion_id:
+                try:
+                    ultima = ResultadoImportacion.objects.get(id=importacion_id)
+                except ResultadoImportacion.DoesNotExist:
+                    ultima = ResultadoImportacion.objects.order_by('-fecha_importacion').first()
+            else:
+                ultima = ResultadoImportacion.objects.order_by('-fecha_importacion').first()
         else:
-            ultima = ResultadoImportacion.objects.filter(usuario=request.user).first()
+            # ── Usuario normal: puede elegir importación ──
+            if importacion_id:
+                try:
+                    ultima = ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
+                except ResultadoImportacion.DoesNotExist:
+                    ultima = ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
+            else:
+                ultima = ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
 
         if not ultima:
             return Response({
@@ -191,6 +205,7 @@ class DashboardStatsView(APIView):
                 "anomalias_por_tipo":      [],
                 "consumo_por_periodo":     [],
                 "distribucion_rangos":     [],
+                "mis_importaciones":       [],
                 "total_importaciones":     0,
                 "usuarios_activos":        0,
             })
@@ -220,7 +235,6 @@ class DashboardStatsView(APIView):
             .order_by("-cantidad")[:6]
         )
 
-        # ── NUEVO: Evolución de consumo mensual (6 meses) ────────────────────
         consumo_por_periodo = list(
             ConsumoMensual.objects.filter(importacion=ultima)
             .values("periodo")
@@ -228,27 +242,18 @@ class DashboardStatsView(APIView):
             .order_by("periodo")
         )
 
-        # ── NUEVO: Distribución por rango de consumo (promedio mensual) ──────
         def _rango(promedio):
-            if promedio <= 30:   return "REG-A1-CO (0-30 m³)"
-            if promedio <= 300:  return "REG-A2-CO (31-300 m³)"
+            if promedio <= 30:  return "REG-A1-CO (0-30 m³)"
+            if promedio <= 300: return "REG-A2-CO (31-300 m³)"
             return "REG-B-CO (>300 m³)"
 
-        clientes_qs = Cliente.objects.filter(importacion=ultima).values(
-            "promedio_mensual", "tarifa_anterior", "tarifa_nueva"
-        )
-
+        clientes_qs = Cliente.objects.filter(importacion=ultima).values("promedio_mensual")
         rangos = {}
         for c in clientes_qs:
             rango = _rango(c["promedio_mensual"] or 0)
-            if rango not in rangos:
-                rangos[rango] = 0
-            rangos[rango] += 1
+            rangos[rango] = rangos.get(rango, 0) + 1
 
-        distribucion_rangos = [
-            {"rango": k, "cantidad": v}
-            for k, v in sorted(rangos.items())
-        ]
+        distribucion_rangos = [{"rango": k, "cantidad": v} for k, v in sorted(rangos.items())]
 
         data = {
             "es_admin":                es_admin,
@@ -266,13 +271,59 @@ class DashboardStatsView(APIView):
             "distribucion_rangos":     distribucion_rangos,
         }
 
+        if not es_admin:
+            # ── Lista de importaciones del usuario para el selector ──
+            from zoneinfo import ZoneInfo
+            mis_importaciones = []
+            for imp in ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion'):
+                mis_importaciones.append({
+                    "id"              : imp.id,
+                    "fecha"           : imp.fecha_importacion.astimezone(ZoneInfo('America/Lima')).strftime("%d/%m/%Y %H:%M"),
+                    "total_registros" : imp.total_registros,
+                    "recategorizados" : imp.recategorizados,
+                })
+            data["mis_importaciones"] = mis_importaciones
+
         if es_admin:
             from django.contrib.auth import get_user_model
             User = get_user_model()
-            data["total_importaciones"] = ResultadoImportacion.objects.count()
+            totales = ResultadoImportacion.objects.aggregate(
+                total_registros       = Sum('total_registros'),
+                total_recategorizados = Sum('recategorizados'),
+            )
+            data["globales"] = {
+                "total_importaciones"  : ResultadoImportacion.objects.count(),
+                "total_registros"      : totales["total_registros"] or 0,
+                "total_recategorizados": totales["total_recategorizados"] or 0,
+            }
+            data["total_importaciones"] = data["globales"]["total_importaciones"]
             data["usuarios_activos"]    = User.objects.filter(activo=True).count()
+
+            # ── NUEVO: lista de usuarios con sus importaciones ──
+            from zoneinfo import ZoneInfo
+            usuarios_lista = []
+            for u in User.objects.filter(activo=True, rol='usuario').order_by('nombre'):
+                importaciones_u = []
+                for imp in ResultadoImportacion.objects.filter(usuario=u).order_by('-fecha_importacion'):
+                    importaciones_u.append({
+                        "id"             : imp.id,
+                        "fecha_str"      : imp.fecha_importacion.astimezone(ZoneInfo('America/Lima')).strftime("%d/%m/%Y %H:%M"),
+                        "total_registros": imp.total_registros,
+                        "recategorizados": imp.recategorizados,
+                    })
+                if importaciones_u:
+                    usuarios_lista.append({
+                        "id"                 : u.id,
+                        "nombre"             : u.nombre,
+                        "apellido"           : u.apellido,
+                        "total_importaciones": len(importaciones_u),
+                        "importaciones"      : importaciones_u,
+                    })
+            data["usuarios_lista"] = usuarios_lista
+
             if ultima.usuario:
-                data["importador"] = f"{ultima.usuario.nombre} {ultima.usuario.apellido}"
+                data["importador"]       = f"{ultima.usuario.nombre} {ultima.usuario.apellido}"
+                data["importacion_fecha"] = ultima.fecha_importacion.astimezone(ZoneInfo('America/Lima')).strftime("%d/%m/%Y %H:%M")
             else:
                 data["importador"] = "Usuario eliminado"
 
@@ -283,7 +334,17 @@ class ClientesListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        ultima = ResultadoImportacion.objects.filter(usuario=request.user).first()
+        # ── NUEVO: aceptar importacion_id del query param o del localStorage ──
+        importacion_id = request.query_params.get('importacion_id', '')
+
+        if importacion_id:
+            try:
+                ultima = ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
+            except ResultadoImportacion.DoesNotExist:
+                ultima = ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
+        else:
+            ultima = ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
+
         if not ultima:
             return Response({"count": 0, "results": [], "porciones": [], "periodos": []})
 
@@ -411,7 +472,7 @@ class ExportarExcelView(APIView):
                 except ResultadoImportacion.DoesNotExist:
                     return Response({"error": "Importación no encontrada"}, status=404)
         else:
-            imp = ResultadoImportacion.objects.filter(usuario=request.user).first()
+            imp = ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
             if not imp:
                 return Response({"error": "No hay importaciones"}, status=404)
 
@@ -681,7 +742,7 @@ class FiltrosDashboardView(APIView):
             except ResultadoImportacion.DoesNotExist:
                 return Response({"error": "Importación no encontrada"}, status=404)
         else:
-            imp = ResultadoImportacion.objects.filter(usuario=request.user).first()
+            imp = ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
             if not imp:
                 return Response({"porciones": [], "periodos": [], "stats": None})
 
