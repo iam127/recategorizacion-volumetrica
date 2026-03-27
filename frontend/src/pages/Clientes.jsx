@@ -156,11 +156,14 @@ function Clientes() {
   const fetchClientes = async () => {
     setLoading(true)
     try {
+      const importacionId = localStorage.getItem('importacion_seleccionada') || ''
       const params = {
         page:      paginaActual,
         page_size: clientesPorPagina,
         search:    busqueda,
       }
+      
+      if (importacionId) params.importacion_id = importacionId 
       if (filtroPorcion) params.porcion     = filtroPorcion
       if (filtroDesde)   params.fecha_desde = filtroDesde
       if (filtroHasta)   params.fecha_hasta = filtroHasta

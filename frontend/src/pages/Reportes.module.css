@@ -3,7 +3,9 @@
   flex-direction: column;
   gap: 24px;
   font-family: 'DM Sans', sans-serif;
-  padding: 24px 32px; 
+  padding: 24px 32px;
+  background: #F5F7FA;
+  min-height: 100%;    
 }
 
 /* Header */

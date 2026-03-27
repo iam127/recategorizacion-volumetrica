@@ -82,6 +82,9 @@ function Operaciones() {
       await new Promise(r => setTimeout(r, 600))
       setResultado(res.data)
       setCompletado(true)
+      
+      // ── Avisar al Navbar que recargue notificaciones ──
+      window.dispatchEvent(new Event('importacion-completada'))
 
     } catch (err) {
       setError(err.response?.data?.error || 'Error al procesar los archivos')
@@ -123,11 +126,11 @@ function Operaciones() {
         {/* Instrucciones */}
         <div className={styles.instrucciones}>
           <div className={styles.instrItem}>
-            <span className={styles.instrNum}>+1</span>
+            <span className={styles.instrNum}>7</span>
             <span className={styles.instrText}>Archivos de <strong>lecturas</strong> (requerido)</span>
           </div>
           <div className={styles.instrItem}>
-            <span className={styles.instrNum}>+1</span>
+            <span className={styles.instrNum}>7</span>
             <span className={styles.instrText}>Archivos de <strong>facturación</strong> (requerido)</span>
           </div>
         </div>

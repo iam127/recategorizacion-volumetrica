@@ -48,6 +48,13 @@ const icons = {
     <path d="M14 11v6M11 14l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
   ),
+
+  ayuda: (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M10 11V10a2 2 0 100-4 2 2 0 000 4M10 14h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+  ),
 }
 
 function Sidebar() {
@@ -64,6 +71,7 @@ function Sidebar() {
     { to: '/reportes',     label: 'Reportes',     icon: icons.reportes },
     { to: '/usuarios',     label: 'Usuarios',     icon: icons.usuarios },
     { to: '/configuracion',label: 'Configuración',icon: icons.config },
+    { to: '/ayuda', label: 'Ayuda', icon: icons.ayuda },
   ]
 
   const userLinks = [
@@ -72,6 +80,7 @@ function Sidebar() {
     { to: '/operaciones',   label: 'Operaciones',    icon: icons.operaciones },
     { to: '/reportes',      label: 'Reportes',       icon: icons.reportes },
     { to: '/configuracion', label: 'Configuración',  icon: icons.config },
+    { to: '/ayuda', label: 'Ayuda', icon: icons.ayuda },
   ]
 
   const links = user?.rol === 'admin' ? adminLinks : userLinks
