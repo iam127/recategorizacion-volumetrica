@@ -53,7 +53,14 @@ function Navbar({ title }) {
   useEffect(() => {
     cargarNotificaciones()
     const intervalo = setInterval(cargarNotificaciones, 60000)
-    return () => clearInterval(intervalo)
+
+    // ── Recargar cuando termina una importación ──
+    window.addEventListener('importacion-completada', cargarNotificaciones)
+
+    return () => {
+      clearInterval(intervalo)
+      window.removeEventListener('importacion-completada', cargarNotificaciones)
+    }
   }, [])
 
   const noLeidas = notificaciones.filter(n => !leidas.includes(n.id)).length

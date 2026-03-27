@@ -63,12 +63,17 @@ function FilterSelect({ label, value, onChange, options, placeholder }) {
 function Dashboard() {
   const { user } = useAuth()
 
-  const [stats,          setStats]          = useState(null)
-  const [loading,        setLoading]        = useState(true)
-  const [loadingSel,     setLoadingSel]     = useState(false)
-  const [tabCuadro3,     setTabCuadro3]     = useState('todos')
-  const [usuarioSel,     setUsuarioSel]     = useState('')
-  const [importacionSel, setImportacionSel] = useState('')
+  const [stats,              setStats]              = useState(null)
+  const [loading,            setLoading]            = useState(true)
+  const [loadingSel,         setLoadingSel]         = useState(false)
+  const [tabCuadro3,         setTabCuadro3]         = useState('todos')
+  const [usuarioSel,         setUsuarioSel]         = useState('')
+  const [importacionSel,     setImportacionSel]     = useState('')
+
+  // ── Selector de importación para usuario normal ──
+  const [importacionUsuario, setImportacionUsuario] = useState(() => {
+    return localStorage.getItem('importacion_seleccionada') || ''
+  })
 
   const [filtrosOpciones, setFiltrosOpciones] = useState({ porciones: [], periodos: [] })
   const [filtroPorcion,   setFiltroPorcion]   = useState('')
@@ -109,8 +114,10 @@ function Dashboard() {
     finally { setLoadingFiltro(false) }
   }, [])
 
+  // ── Efecto inicial ──
   useEffect(() => {
-    fetchStats().then(data => {
+    const params = (!esAdmin && importacionUsuario) ? { importacion_id: importacionUsuario } : {}
+    fetchStats(params).then(data => {
       if (!esAdmin && data?.importacion_id) {
         setImportacionId(data.importacion_id)
         fetchFiltrosOpciones(data.importacion_id)
@@ -118,6 +125,22 @@ function Dashboard() {
     }).finally(() => setLoading(false))
   }, [])
 
+  // ── Handler selector importación usuario normal ──
+  const handleImportacionUsuario = async (id) => {
+    setImportacionUsuario(id)
+    localStorage.setItem('importacion_seleccionada', id)
+    setLoadingSel(true)
+    limpiarFiltros()
+    try {
+      const data = await fetchStats(id ? { importacion_id: id } : {})
+      if (data?.importacion_id) {
+        setImportacionId(data.importacion_id)
+        fetchFiltrosOpciones(data.importacion_id)
+      }
+    } finally { setLoadingSel(false) }
+  }
+
+  // ── Handlers admin ──
   const handleUsuarioChange = async (e) => {
     const id = e.target.value
     setUsuarioSel(id)
@@ -159,7 +182,6 @@ function Dashboard() {
   const noAptosObs    = stats?.no_aptos_observaciones || []
   const anomaliasTipo = stats?.anomalias_por_tipo     || []
 
-  // ── NUEVOS DATOS ──────────────────────────────────────────────────────────
   const consumoPorPeriodo = (filtroStats?.consumo_por_periodo || stats?.consumo_por_periodo || []).map(d => ({
     periodo: d.periodo,
     consumo: parseFloat((d.consumo_total || 0).toFixed(1)),
@@ -171,7 +193,6 @@ function Dashboard() {
     fill    : RANGO_COLORS[i % RANGO_COLORS.length],
   }))
 
-  // Movimientos tarifarios — solo cambios reales
   const movimientosData = (activeStats?.cambios_tarifarios || [])
     .filter(d => d.tarifa_anterior !== d.tarifa_nueva)
     .map(d => ({
@@ -189,6 +210,8 @@ function Dashboard() {
   const importacionesUsuario = usuarioSel
     ? (stats?.usuarios_lista?.find(u => String(u.id) === String(usuarioSel))?.importaciones || [])
     : []
+
+  const impSeleccionada = stats?.mis_importaciones?.find(i => String(i.id) === String(importacionUsuario))
 
   return (
     <Layout title="Dashboard">
@@ -248,38 +271,130 @@ function Dashboard() {
               ))}
             </div>
 
+            {/* ── Panel selección usuario + importación ── */}
             <div style={{ background: '#fff', border: '1px solid #F0F0F0', borderRadius: 14, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>📋 Ver estadísticas detalladas</p>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#0B1120', margin: 0, fontFamily: 'Sora, sans-serif' }}>
+                📋 Ver estadísticas detalladas
+              </p>
+
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+
+                {/* Paso 1 — Usuario */}
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>Usuario</p>
-                  <select value={usuarioSel} onChange={handleUsuarioChange} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #E5E7EB', fontSize: 14, fontFamily: 'DM Sans, sans-serif', outline: 'none', cursor: 'pointer', color: '#374151' }}>
-                    <option value="">— Última importación del sistema —</option>
+                  <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>
+                    1. Usuario
+                  </p>
+                  <select
+                    value={usuarioSel}
+                    onChange={handleUsuarioChange}
+                    style={{
+                      width: '100%', padding: '10px 14px', borderRadius: 10,
+                      border: `1px solid ${usuarioSel ? '#2e75b6' : '#E5E7EB'}`,
+                      fontSize: 14, fontFamily: 'DM Sans, sans-serif',
+                      outline: 'none', cursor: 'pointer', color: '#374151',
+                      background: usuarioSel ? '#EFF6FF' : '#fff',
+                    }}
+                  >
+                    <option value="">— Seleccionar usuario —</option>
                     {(stats.usuarios_lista || []).map(u => (
-                      <option key={u.id} value={u.id}>{u.nombre} {u.apellido} · {u.total_importaciones} importación{u.total_importaciones !== 1 ? 'es' : ''}</option>
+                      <option key={u.id} value={u.id}>
+                        {u.nombre} {u.apellido} · {u.total_importaciones} importación{u.total_importaciones !== 1 ? 'es' : ''}
+                      </option>
                     ))}
                   </select>
                 </div>
-                {usuarioSel && importacionesUsuario.length > 1 && (
+
+                {/* Paso 2 — Importación (solo si hay usuario seleccionado) */}
+                {usuarioSel && (
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>Importación</p>
-                    <select value={importacionSel} onChange={handleImportacionChange} style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #E5E7EB', fontSize: 14, fontFamily: 'DM Sans, sans-serif', outline: 'none', cursor: 'pointer', color: '#374151' }}>
+                    <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>
+                      2. Importación
+                    </p>
+                    <select
+                      value={importacionSel}
+                      onChange={handleImportacionChange}
+                      style={{
+                        width: '100%', padding: '10px 14px', borderRadius: 10,
+                        border: `1px solid ${importacionSel ? '#2e75b6' : '#E5E7EB'}`,
+                        fontSize: 14, fontFamily: 'DM Sans, sans-serif',
+                        outline: 'none', cursor: 'pointer', color: '#374151',
+                        background: importacionSel ? '#EFF6FF' : '#fff',
+                      }}
+                    >
                       <option value="">— Más reciente —</option>
                       {importacionesUsuario.map((imp, i) => (
-                        <option key={imp.id} value={imp.id}>#{importacionesUsuario.length - i} · {imp.fecha_str} · {imp.total_registros.toLocaleString()} registros</option>
+                        <option key={imp.id} value={imp.id}>
+                          #{importacionesUsuario.length - i} · {imp.fecha_str} · {imp.total_registros.toLocaleString()} registros
+                        </option>
                       ))}
                     </select>
                   </div>
                 )}
-                {loadingSel && <span style={{ fontSize: 13, color: '#9CA3AF', whiteSpace: 'nowrap' }}>Cargando...</span>}
-                {stats.importador && (
-                  <div style={{ background: '#F9FAFB', border: '1px solid #F0F0F0', borderRadius: 10, padding: '8px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}>
-                    Viendo: <strong style={{ color: '#0B1120' }}>{stats.importador}{stats.importacion_fecha ? ` · ${stats.importacion_fecha}` : ''}</strong>
-                  </div>
+
+                {loadingSel && (
+                  <span style={{ fontSize: 13, color: '#9CA3AF', whiteSpace: 'nowrap', paddingBottom: 10 }}>
+                    Cargando...
+                  </span>
                 )}
               </div>
+
+              {/* Badge viendo — solo cuando hay usuario seleccionado */}
+              {usuarioSel && stats.importador && (
+                <div style={{
+                  background: '#F0F7FF', border: '1px solid #BFDBFE',
+                  borderRadius: 10, padding: '8px 16px',
+                  fontSize: 13, color: '#1e3a5f',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <span>👁</span>
+                  <span>
+                    Viendo: <strong>{stats.importador}</strong>
+                    {stats.importacion_fecha ? ` · ${stats.importacion_fecha}` : ''}
+                  </span>
+                </div>
+              )}
             </div>
           </>
+        )}
+
+        {/* ── Selector de importación — usuario normal ── */}
+        {!esAdmin && !loading && (stats?.mis_importaciones?.length >= 1) && (
+          <div style={{ background: '#fff', border: '1px solid #EAECF0', borderRadius: 14, padding: '16px 24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <span style={{ fontSize: 20 }}>📥</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 6px', fontWeight: 600, textTransform: 'uppercase' }}>
+                  Seleccionar Importación
+                </p>
+                <select
+                  value={importacionUsuario}
+                  onChange={e => handleImportacionUsuario(e.target.value)}
+                  style={{
+                    width: '100%', padding: '9px 12px', borderRadius: 10,
+                    border: `1px solid ${importacionUsuario ? '#2e75b6' : '#E5E7EB'}`,
+                    fontSize: 13, fontFamily: 'DM Sans, sans-serif',
+                    outline: 'none', cursor: 'pointer', color: '#374151',
+                    background: importacionUsuario ? '#EFF6FF' : '#fff',
+                  }}
+                >
+                  <option value="">— Más reciente —</option>
+                  {(stats?.mis_importaciones || []).map((imp, i) => (
+                    <option key={imp.id} value={imp.id}>
+                      #{stats.mis_importaciones.length - i} · {imp.fecha} · {imp.total_registros.toLocaleString()} registros · {imp.recategorizados.toLocaleString()} recategorizados
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {loadingSel && <span style={{ fontSize: 12, color: '#9CA3AF', whiteSpace: 'nowrap' }}>Cargando...</span>}
+              {impSeleccionada && (
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '8px 14px', fontSize: 12, color: '#1e3a5f', whiteSpace: 'nowrap' }}>
+                  Viendo importación <strong>
+                    #{stats.mis_importaciones.length - stats.mis_importaciones.findIndex(i => String(i.id) === String(importacionUsuario))}
+                  </strong> · {impSeleccionada.fecha}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* ── Stats principales ── */}
@@ -332,9 +447,7 @@ function Dashboard() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════
-            NUEVO — Evolución mensual de consumo (siempre visible)
-        ══════════════════════════════════════════════════════ */}
+        {/* ── Evolución mensual de consumo ── */}
         {!loading && consumoPorPeriodo.length > 0 && (
           <div className={styles.chartCard}>
             <div className={styles.chartHeader}>
@@ -361,13 +474,9 @@ function Dashboard() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════
-            NUEVO — Movimientos tarifarios + Distribución por rango
-        ══════════════════════════════════════════════════════ */}
+        {/* ── Movimientos tarifarios + Distribución por rango ── */}
         {!loading && (movimientosData.length > 0 || distribucionRangos.length > 0) && (
           <div className={styles.chartsGrid}>
-
-            {/* Movimientos tarifarios */}
             <div className={styles.chartCard}>
               <div className={styles.chartHeader}>
                 <div>
@@ -406,7 +515,6 @@ function Dashboard() {
               )}
             </div>
 
-            {/* Distribución por rango de consumo */}
             <div className={styles.chartCard}>
               <div className={styles.chartHeader}>
                 <div>
@@ -422,7 +530,6 @@ function Dashboard() {
                     <BarChart data={distribucionRangos} barCategoryGap="30%">
                       <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" vertical={false} />
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} height={50} tickFormatter={(v) => v.split(' ')[0]} />
-
                       <YAxis tick={{ fontSize: 11 }} tickFormatter={v => v.toLocaleString()} width={70} />
                       <Tooltip formatter={v => [v.toLocaleString(), 'Clientes']} />
                       <Bar dataKey="cantidad" radius={[6, 6, 0, 0]}>

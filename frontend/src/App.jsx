@@ -8,6 +8,8 @@ import Operaciones from './pages/Operaciones'
 import Clientes from './pages/Clientes'
 import Reportes from './pages/Reportes'
 import Usuarios from './pages/Usuarios'
+import Ayuda from './pages/Ayuda'
+
 
 function App() {
   return (
@@ -21,6 +23,7 @@ function App() {
       <Route path="/operaciones"   element={<ProtectedRoute><Operaciones /></ProtectedRoute>} />
       <Route path="/clientes"      element={<ProtectedRoute><Clientes /></ProtectedRoute>} />
       <Route path="/reportes"      element={<ProtectedRoute><Reportes /></ProtectedRoute>} />
+      <Route path="/ayuda" element={<ProtectedRoute><Ayuda /></ProtectedRoute>} />
 
       <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
     </Routes>
