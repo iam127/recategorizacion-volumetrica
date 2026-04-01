@@ -127,11 +127,15 @@ function Operaciones() {
         <div className={styles.instrucciones}>
           <div className={styles.instrItem}>
             <span className={styles.instrNum}>7</span>
-            <span className={styles.instrText}>Archivos de <strong>lecturas</strong> (requerido)</span>
+            <span className={styles.instrText}>
+              Archivos de <strong>lecturas</strong> — 6 meses de evaluación + 1 mes histórico (requerido)
+            </span>
           </div>
           <div className={styles.instrItem}>
             <span className={styles.instrNum}>7</span>
-            <span className={styles.instrText}>Archivos de <strong>facturación</strong> (requerido)</span>
+            <span className={styles.instrText}>
+              Archivos de <strong>facturación</strong> — 6 meses de evaluación + 1 mes histórico (requerido)
+            </span>
           </div>
         </div>
 

@@ -55,6 +55,21 @@ const icons = {
     <path d="M10 11V10a2 2 0 100-4 2 2 0 000 4M10 14h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
   </svg>
   ),
+
+  matriz: (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <rect x="2" y="2" width="16" height="3" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+    <rect x="2" y="7" width="16" height="3" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+    <rect x="2" y="12" width="16" height="3" rx="1" stroke="currentColor" strokeWidth="1.5"/>
+  </svg>
+  ),
+  noAptos: (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <circle cx="10" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M3 17c0-3.314 3.134-6 7-6s7 2.686 7 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    <path d="M14 12l4 4M18 12l-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+  ),
 }
 
 function Sidebar() {
@@ -67,20 +82,24 @@ function Sidebar() {
   }
 
   const adminLinks = [
-    { to: '/dashboard',    label: 'Dashboard',    icon: icons.dashboard },
-    { to: '/reportes',     label: 'Reportes',     icon: icons.reportes },
-    { to: '/usuarios',     label: 'Usuarios',     icon: icons.usuarios },
-    { to: '/configuracion',label: 'Configuración',icon: icons.config },
-    { to: '/ayuda', label: 'Ayuda', icon: icons.ayuda },
+    { to: '/dashboard',     label: 'Dashboard',               icon: icons.dashboard },
+    { to: '/reportes',      label: 'Reportes',                icon: icons.reportes },
+    { to: '/matriz',        label: 'Matriz Recategorización', icon: icons.matriz },
+    { to: '/no-aptos',      label: 'Clientes No Aptos',       icon: icons.noAptos },
+    { to: '/usuarios',      label: 'Usuarios',                icon: icons.usuarios },
+    { to: '/configuracion', label: 'Configuración',           icon: icons.config },
+    { to: '/ayuda',         label: 'Ayuda',                   icon: icons.ayuda },
   ]
 
   const userLinks = [
-    { to: '/dashboard',     label: 'Dashboard',     icon: icons.dashboard },
-    { to: '/clientes',      label: 'Clientes',       icon: icons.clientes },
-    { to: '/operaciones',   label: 'Operaciones',    icon: icons.operaciones },
-    { to: '/reportes',      label: 'Reportes',       icon: icons.reportes },
-    { to: '/configuracion', label: 'Configuración',  icon: icons.config },
-    { to: '/ayuda', label: 'Ayuda', icon: icons.ayuda },
+    { to: '/dashboard',     label: 'Dashboard',                  icon: icons.dashboard },
+    { to: '/clientes',      label: 'Clientes',                   icon: icons.clientes },
+    { to: '/matriz',        label: 'Matriz Recategorización',    icon: icons.matriz },
+    { to: '/no-aptos',      label: 'Clientes No Aptos',          icon: icons.noAptos },
+    { to: '/operaciones',   label: 'Operaciones',                icon: icons.operaciones },
+    { to: '/reportes',      label: 'Reportes',                   icon: icons.reportes },
+    { to: '/configuracion', label: 'Configuración',              icon: icons.config },
+    { to: '/ayuda',         label: 'Ayuda',                      icon: icons.ayuda },
   ]
 
   const links = user?.rol === 'admin' ? adminLinks : userLinks

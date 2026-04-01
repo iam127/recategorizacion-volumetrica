@@ -1,8 +1,9 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   font-family: 'DM Sans', sans-serif;
+  padding: 24px 32px; 
 }
 
 /* ── Header ── */
