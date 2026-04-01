@@ -9,6 +9,8 @@ import Clientes from './pages/Clientes'
 import Reportes from './pages/Reportes'
 import Usuarios from './pages/Usuarios'
 import Ayuda from './pages/Ayuda'
+import MatrizRecategorizacion from './pages/MatrizRecategorizacion'
+import ClientesNoAptos from './pages/ClientesNoAptos'
 
 
 function App() {
@@ -24,6 +26,8 @@ function App() {
       <Route path="/clientes"      element={<ProtectedRoute><Clientes /></ProtectedRoute>} />
       <Route path="/reportes"      element={<ProtectedRoute><Reportes /></ProtectedRoute>} />
       <Route path="/ayuda" element={<ProtectedRoute><Ayuda /></ProtectedRoute>} />
+      <Route path="/matriz"    element={<ProtectedRoute><MatrizRecategorizacion /></ProtectedRoute>} />
+      <Route path="/no-aptos"  element={<ProtectedRoute><ClientesNoAptos /></ProtectedRoute>} />
 
       <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
     </Routes>
