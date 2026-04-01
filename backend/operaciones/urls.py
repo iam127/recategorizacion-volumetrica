@@ -7,6 +7,8 @@ from .views import (
     ExportarExcelView,
     ComparativaView,
     FiltrosDashboardView,
+    MatrizRecategorizacionView,
+    ClienteNoAptoListView,
 )
 
 urlpatterns = [
@@ -17,4 +19,6 @@ urlpatterns = [
     path('exportar-excel/',    ExportarExcelView.as_view(),          name='exportar_excel'),
     path('comparativa/',       ComparativaView.as_view(),            name='comparativa'),
     path('dashboard/filtros/', FiltrosDashboardView.as_view(),       name='filtros_dashboard'),
+    path('matriz/',            MatrizRecategorizacionView.as_view(), name='matriz'),
+    path('no-aptos/', ClienteNoAptoListView.as_view(), name='no_aptos'),
 ]
