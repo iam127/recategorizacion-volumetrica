@@ -33,6 +33,7 @@ class Cliente(models.Model):
     estado              = models.CharField(max_length=20)
     porcion             = models.CharField(max_length=50, blank=True, null=True)
     unidad_predial      = models.CharField(max_length=50, blank=True, null=True)
+    rango_consumo       = models.CharField(max_length=30, blank=True, null=True)   
 
     class Meta:
         db_table = 'clientes'
@@ -95,6 +96,86 @@ class ClienteNoApto(models.Model):
 
     def __str__(self):
         return f"{self.instalacion} - {self.observacion[:50]}"
+    
+class MatrizRecategorizacion(models.Model):
+
+    importacion             = models.ForeignKey(ResultadoImportacion, on_delete=models.CASCADE, related_name='matriz_recategorizacion')
+    cuenta_contrato         = models.CharField(max_length=50)
+    instalacion             = models.CharField(max_length=50)
+    porcion                 = models.CharField(max_length=50, blank=True, null=True)
+    tipo_tarifa             = models.CharField(max_length=20, blank=True, null=True)
+
+    # Mes histórico
+    cf_mes_historico        = models.FloatField(blank=True, null=True)
+    fl_mes_historico        = models.DateField(blank=True, null=True)
+    cl_mes_historico        = models.FloatField(blank=True, null=True)
+
+    # Mes 1 al 5 (evaluación)
+    cf_mes_1                = models.FloatField(blank=True, null=True)
+    fl_mes_1                = models.DateField(blank=True, null=True)
+    dc_mes_1                = models.FloatField(blank=True, null=True)
+    cl_mes_1                = models.FloatField(blank=True, null=True)
+    tarifa_mes_1            = models.CharField(max_length=20, blank=True, null=True)
+
+    cf_mes_2                = models.FloatField(blank=True, null=True)
+    fl_mes_2                = models.DateField(blank=True, null=True)
+    dc_mes_2                = models.FloatField(blank=True, null=True)
+    cl_mes_2                = models.FloatField(blank=True, null=True)
+    tarifa_mes_2            = models.CharField(max_length=20, blank=True, null=True)
+
+    cf_mes_3                = models.FloatField(blank=True, null=True)
+    fl_mes_3                = models.DateField(blank=True, null=True)
+    dc_mes_3                = models.FloatField(blank=True, null=True)
+    cl_mes_3                = models.FloatField(blank=True, null=True)
+    tarifa_mes_3            = models.CharField(max_length=20, blank=True, null=True)
+
+    cf_mes_4                = models.FloatField(blank=True, null=True)
+    fl_mes_4                = models.DateField(blank=True, null=True)
+    dc_mes_4                = models.FloatField(blank=True, null=True)
+    cl_mes_4                = models.FloatField(blank=True, null=True)
+    tarifa_mes_4            = models.CharField(max_length=20, blank=True, null=True)
+
+    cf_mes_5                = models.FloatField(blank=True, null=True)
+    fl_mes_5                = models.DateField(blank=True, null=True)
+    dc_mes_5                = models.FloatField(blank=True, null=True)
+    cl_mes_5                = models.FloatField(blank=True, null=True)
+    tarifa_mes_5            = models.CharField(max_length=20, blank=True, null=True)
+
+    # Mes 6 (histórico de referencia)
+    cf_mes_6                = models.FloatField(blank=True, null=True)
+    fl_mes_6                = models.DateField(blank=True, null=True)
+    dc_mes_6                = models.FloatField(blank=True, null=True)
+    cl_mes_6                = models.FloatField(blank=True, null=True)
+
+    # Lecturas
+    lectura_anterior        = models.FloatField(blank=True, null=True)
+    lectura_actual          = models.FloatField(blank=True, null=True)
+    factor_correccion       = models.FloatField(blank=True, null=True)
+
+    # Totales y promedios
+    total_consumo           = models.FloatField(default=0)
+    total_dias              = models.FloatField(default=0)
+    promedio_diario         = models.FloatField(default=0)
+    promedio_mensual        = models.FloatField(default=0)
+    promedio_redondeado     = models.IntegerField(default=0)
+
+    # Resultado
+    tarifa_actual           = models.CharField(max_length=20, blank=True, null=True)
+    tarifa_nueva            = models.CharField(max_length=20, blank=True, null=True)
+    recategorizar           = models.CharField(max_length=5, blank=True, null=True)  # "Sí" o "No"
+    rango_consumo           = models.CharField(max_length=30, blank=True, null=True)
+    comportamiento          = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        db_table = 'matriz_recategorizacion'
+        indexes  = [
+            models.Index(fields=['importacion', 'instalacion']),
+            models.Index(fields=['importacion', 'recategorizar']),
+            models.Index(fields=['importacion', 'porcion']),
+        ]
+
+    def __str__(self):
+        return f"{self.instalacion} — {self.tarifa_actual} → {self.tarifa_nueva}"
 
 
 class Anomalia(models.Model):

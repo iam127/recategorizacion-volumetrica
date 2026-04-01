@@ -5,8 +5,8 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework import status
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
-from .etl import cargar_excel, cargar_excel_facturacion, limpiar_datos, limpiar_facturacion_externa, ejecutar_recategorizacion
-from .models import ResultadoImportacion, Cliente, ResumenTarifario, ClienteNoApto, Anomalia, ConsumoMensual
+from .etl import cargar_excel, cargar_excel_facturacion, limpiar_datos, limpiar_facturacion_externa, ejecutar_recategorizacion, _safe_float, _safe_date
+from .models import ResultadoImportacion, Cliente, ResumenTarifario, ClienteNoApto, Anomalia, ConsumoMensual, MatrizRecategorizacion
 import pandas as pd
 import io
 
@@ -46,14 +46,14 @@ class ImportarExcelView(APIView):
                     pd.concat(dfs_fact_ext, ignore_index=True)
                 )
 
-            cuadro_2, cuadro_3, cuadro_4, cuadro_5, df_mensual = ejecutar_recategorizacion(
+            cuadro_2, cuadro_3, cuadro_4, cuadro_5, df_mensual, cuadro_matriz = ejecutar_recategorizacion(
                 df_lectura, df_facturacion, df_facturacion_externa
             )
 
             total_clientes  = len(cuadro_2)
             recategorizados = int((cuadro_2["Estado"] == "Recategorizado").sum())
             sin_cambios     = int((cuadro_2["Estado"] == "Sin cambio").sum())
-            no_aptos        = cuadro_4["Cuenta contrato"].nunique()
+            no_aptos        = cuadro_4["Instalación"].nunique()
             anomalias       = len(cuadro_5)
 
             importacion = ResultadoImportacion.objects.create(
@@ -81,6 +81,7 @@ class ImportarExcelView(APIView):
                     estado              = str(row["Estado"] or ""),
                     porcion             = str(row["Porcion"]) if pd.notna(row["Porcion"]) else None,
                     unidad_predial      = str(row["Unidad_Predial"]) if pd.notna(row["Unidad_Predial"]) else None,
+                    rango_consumo       = str(row["Rango_consumo"]) if pd.notna(row.get("Rango_consumo")) else None,
                 ))
             Cliente.objects.bulk_create(clientes_bulk, batch_size=500)
 
@@ -143,6 +144,64 @@ class ImportarExcelView(APIView):
                 ))
             ConsumoMensual.objects.bulk_create(consumo_bulk, batch_size=1000)
 
+            matriz_bulk = []
+            for _, row in cuadro_matriz.iterrows():
+                def sf(col): return _safe_float(row.get(col))
+                def sd(col): return _safe_date(row.get(col))
+                matriz_bulk.append(MatrizRecategorizacion(
+                    importacion         = importacion,
+                    cuenta_contrato     = str(row.get("Cuenta_contrato") or ""),
+                    instalacion         = str(row.get("Instalación") or ""),
+                    porcion             = str(row["Porcon"]) if pd.notna(row.get("Porcon")) else None,
+                    tipo_tarifa         = str(row.get("Tarifa_referencia") or ""),
+                    cf_mes_historico    = sf("CF_mes_historico"),
+                    fl_mes_historico    = sd("FL_mes_historico"),
+                    cl_mes_historico    = sf("CL_mes_historico"),
+                    cf_mes_1            = sf("CF_mes_1"),
+                    fl_mes_1            = sd("FL_mes_1"),
+                    dc_mes_1            = sf("DC_mes_1"),
+                    cl_mes_1            = sf("CL_mes_1"),
+                    tarifa_mes_1        = str(row["Tarifa_mes_1"]) if pd.notna(row.get("Tarifa_mes_1")) else None,
+                    cf_mes_2            = sf("CF_mes_2"),
+                    fl_mes_2            = sd("FL_mes_2"),
+                    dc_mes_2            = sf("DC_mes_2"),
+                    cl_mes_2            = sf("CL_mes_2"),
+                    tarifa_mes_2        = str(row["Tarifa_mes_2"]) if pd.notna(row.get("Tarifa_mes_2")) else None,
+                    cf_mes_3            = sf("CF_mes_3"),
+                    fl_mes_3            = sd("FL_mes_3"),
+                    dc_mes_3            = sf("DC_mes_3"),
+                    cl_mes_3            = sf("CL_mes_3"),
+                    tarifa_mes_3        = str(row["Tarifa_mes_3"]) if pd.notna(row.get("Tarifa_mes_3")) else None,
+                    cf_mes_4            = sf("CF_mes_4"),
+                    fl_mes_4            = sd("FL_mes_4"),
+                    dc_mes_4            = sf("DC_mes_4"),
+                    cl_mes_4            = sf("CL_mes_4"),
+                    tarifa_mes_4        = str(row["Tarifa_mes_4"]) if pd.notna(row.get("Tarifa_mes_4")) else None,
+                    cf_mes_5            = sf("CF_mes_5"),
+                    fl_mes_5            = sd("FL_mes_5"),
+                    dc_mes_5            = sf("DC_mes_5"),
+                    cl_mes_5            = sf("CL_mes_5"),
+                    tarifa_mes_5        = str(row["Tarifa_mes_5"]) if pd.notna(row.get("Tarifa_mes_5")) else None,
+                    cf_mes_6            = sf("CF_mes_6"),
+                    fl_mes_6            = sd("FL_mes_6"),
+                    dc_mes_6            = sf("DC_mes_6"),
+                    cl_mes_6            = sf("CL_mes_6"),
+                    lectura_anterior    = sf("Lectura Anterior"),
+                    lectura_actual      = sf("Lectura Actual"),
+                    factor_correccion   = sf("Factor de Corrección"),
+                    total_consumo       = float(row.get("Total_consumo_facturado") or 0),
+                    total_dias          = float(row.get("Total_dias_consumo") or 0),
+                    promedio_diario     = float(row.get("Promedio_diario") or 0),
+                    promedio_mensual    = float(row.get("Promedio_mensual") or 0),
+                    promedio_redondeado = int(row.get("Promedio_redondeado") or 0),
+                    tarifa_actual       = str(row.get("Tarifa_referencia") or ""),
+                    tarifa_nueva        = str(row.get("Tarifa_nueva") or ""),
+                    recategorizar       = str(row.get("Recategorizar") or "No"),
+                    rango_consumo       = str(row.get("Rango_consumo") or ""),
+                    comportamiento      = str(row.get("Comportamiento") or ""),
+                ))
+            MatrizRecategorizacion.objects.bulk_create(matriz_bulk, batch_size=500)
+
             return Response({
                 "total":                   total_clientes + no_aptos,
                 "procesados":              total_clientes,
@@ -182,7 +241,6 @@ class DashboardStatsView(APIView):
             else:
                 ultima = ResultadoImportacion.objects.order_by('-fecha_importacion').first()
         else:
-            # ── Usuario normal: puede elegir importación ──
             if importacion_id:
                 try:
                     ultima = ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
@@ -272,7 +330,6 @@ class DashboardStatsView(APIView):
         }
 
         if not es_admin:
-            # ── Lista de importaciones del usuario para el selector ──
             from zoneinfo import ZoneInfo
             mis_importaciones = []
             for imp in ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion'):
@@ -286,6 +343,7 @@ class DashboardStatsView(APIView):
 
         if es_admin:
             from django.contrib.auth import get_user_model
+            from zoneinfo import ZoneInfo
             User = get_user_model()
             totales = ResultadoImportacion.objects.aggregate(
                 total_registros       = Sum('total_registros'),
@@ -299,8 +357,6 @@ class DashboardStatsView(APIView):
             data["total_importaciones"] = data["globales"]["total_importaciones"]
             data["usuarios_activos"]    = User.objects.filter(activo=True).count()
 
-            # ── NUEVO: lista de usuarios con sus importaciones ──
-            from zoneinfo import ZoneInfo
             usuarios_lista = []
             for u in User.objects.filter(activo=True, rol='usuario').order_by('nombre'):
                 importaciones_u = []
@@ -322,7 +378,7 @@ class DashboardStatsView(APIView):
             data["usuarios_lista"] = usuarios_lista
 
             if ultima.usuario:
-                data["importador"]       = f"{ultima.usuario.nombre} {ultima.usuario.apellido}"
+                data["importador"]        = f"{ultima.usuario.nombre} {ultima.usuario.apellido}"
                 data["importacion_fecha"] = ultima.fecha_importacion.astimezone(ZoneInfo('America/Lima')).strftime("%d/%m/%Y %H:%M")
             else:
                 data["importador"] = "Usuario eliminado"
@@ -334,7 +390,6 @@ class ClientesListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # ── NUEVO: aceptar importacion_id del query param o del localStorage ──
         importacion_id = request.query_params.get('importacion_id', '')
 
         if importacion_id:
@@ -375,10 +430,8 @@ class ClientesListView(APIView):
                 Q(cuenta_contrato__icontains=search) |
                 Q(porcion__icontains=search)
             )
-
         if porcion:
             qs = qs.filter(porcion=porcion)
-
         if fecha_desde or fecha_hasta:
             cm_qs = ConsumoMensual.objects.filter(importacion=ultima)
             if fecha_desde:
@@ -426,7 +479,7 @@ class HistorialImportacionesView(APIView):
         for imp in importaciones:
             item = {
                 "id":              imp.id,
-                "fecha": imp.fecha_importacion.astimezone(
+                "fecha":           imp.fecha_importacion.astimezone(
                     __import__('zoneinfo').ZoneInfo('America/Lima')
                 ).strftime("%d/%m/%Y %H:%M"),
                 "total_registros": imp.total_registros,
@@ -452,10 +505,7 @@ class ExportarExcelView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from openpyxl import load_workbook
-        from openpyxl.styles import (
-            PatternFill, Font, Alignment, Border, Side, GradientFill
-        )
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
         from openpyxl.utils import get_column_letter
 
         importacion_id = request.query_params.get("importacion_id")
@@ -494,7 +544,22 @@ class ExportarExcelView(APIView):
         anomalias = list(Anomalia.objects.filter(importacion=imp).values(
             "cuenta_contrato", "instalacion", "fecha", "tipo_anomalia"
         ))
+        matriz = list(MatrizRecategorizacion.objects.filter(importacion=imp).values(
+            "instalacion", "cuenta_contrato", "porcion", "tipo_tarifa",
+            "cf_mes_historico", "fl_mes_historico", "cl_mes_historico",
+            "cf_mes_1", "fl_mes_1", "dc_mes_1", "cl_mes_1", "tarifa_mes_1",
+            "cf_mes_2", "fl_mes_2", "dc_mes_2", "cl_mes_2", "tarifa_mes_2",
+            "cf_mes_3", "fl_mes_3", "dc_mes_3", "cl_mes_3", "tarifa_mes_3",
+            "cf_mes_4", "fl_mes_4", "dc_mes_4", "cl_mes_4", "tarifa_mes_4",
+            "cf_mes_5", "fl_mes_5", "dc_mes_5", "cl_mes_5", "tarifa_mes_5",
+            "cf_mes_6", "fl_mes_6", "dc_mes_6", "cl_mes_6",
+            "lectura_anterior", "lectura_actual", "factor_correccion",
+            "total_consumo", "total_dias", "promedio_diario", "promedio_mensual",
+            "promedio_redondeado", "tarifa_actual", "tarifa_nueva",
+            "recategorizar", "rango_consumo", "comportamiento",
+        ))
 
+        # ── Colores ──
         AZUL_OSCURO = "0B1120"
         AZUL_MEDIO  = "1E3A5F"
         AMBAR       = "F59E0B"
@@ -528,7 +593,6 @@ class ExportarExcelView(APIView):
             c.fill      = PatternFill("solid", fgColor=AZUL_OSCURO)
             c.font      = Font(bold=True, color=AMBAR, size=14, name="Calibri")
             c.alignment = Alignment(horizontal="center", vertical="center")
-
             ws.row_dimensions[2].height = 22
             ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=num_cols)
             c2 = ws.cell(row=2, column=1)
@@ -536,15 +600,13 @@ class ExportarExcelView(APIView):
             c2.fill      = PatternFill("solid", fgColor=AZUL_MEDIO)
             c2.font      = Font(color=BLANCO, size=9, italic=True, name="Calibri")
             c2.alignment = Alignment(horizontal="center", vertical="center")
-
             ws.row_dimensions[3].height = 4
             ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=num_cols)
             ws.cell(row=3, column=1).fill = PatternFill("solid", fgColor=AMBAR)
 
         def autofit(ws, min_width=10, max_width=40):
-            from openpyxl.utils import get_column_letter
             for col in ws.columns:
-                max_len = 0
+                max_len    = 0
                 col_letter = get_column_letter(col[0].column)
                 for cell in col:
                     try:
@@ -557,6 +619,7 @@ class ExportarExcelView(APIView):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
 
+            # ── Hoja 1: Clientes Recategorizados ──
             df1 = pd.DataFrame(clientes).rename(columns={
                 "instalacion":        "Instalación",
                 "cuenta_contrato":    "Cuenta Contrato",
@@ -594,6 +657,7 @@ class ExportarExcelView(APIView):
             ws1.freeze_panes = "A6"
             autofit(ws1)
 
+            # ── Hoja 2: Resumen Tarifario ──
             df2 = pd.DataFrame(resumenes).rename(columns={
                 "tarifa_anterior":   "Tarifa Anterior",
                 "tarifa_nueva":      "Tarifa Nueva",
@@ -628,6 +692,7 @@ class ExportarExcelView(APIView):
             ws2.freeze_panes = "A6"
             autofit(ws2)
 
+            # ── Hoja 3: Clientes No Aptos ──
             df3 = pd.DataFrame(no_aptos).rename(columns={
                 "cuenta_contrato":   "Cuenta Contrato",
                 "instalacion":       "Instalación",
@@ -654,6 +719,7 @@ class ExportarExcelView(APIView):
             ws3.freeze_panes = "A6"
             autofit(ws3)
 
+            # ── Hoja 4: Anomalías ──
             df4 = pd.DataFrame(anomalias).rename(columns={
                 "cuenta_contrato": "Cuenta Contrato",
                 "instalacion":     "Instalación",
@@ -675,6 +741,84 @@ class ExportarExcelView(APIView):
                     cell.border    = border_thin
             ws4.freeze_panes = "A6"
             autofit(ws4)
+
+            # ── Hoja 5: Matriz de Recategorización ──
+            if matriz:
+                df5 = pd.DataFrame(matriz).rename(columns={
+                    "instalacion"        : "Instalación",
+                    "cuenta_contrato"    : "Cuenta Contrato",
+                    "porcion"            : "Porción",
+                    "tipo_tarifa"        : "Tipo Tarifa",
+                    "cf_mes_historico"   : "CF Hist.",
+                    "fl_mes_historico"   : "FL Hist.",
+                    "cl_mes_historico"   : "CL Hist.",
+                    "cf_mes_1"           : "CF M1",
+                    "fl_mes_1"           : "FL M1",
+                    "dc_mes_1"           : "DC M1",
+                    "cl_mes_1"           : "CL M1",
+                    "tarifa_mes_1"       : "Tarifa M1",
+                    "cf_mes_2"           : "CF M2",
+                    "fl_mes_2"           : "FL M2",
+                    "dc_mes_2"           : "DC M2",
+                    "cl_mes_2"           : "CL M2",
+                    "tarifa_mes_2"       : "Tarifa M2",
+                    "cf_mes_3"           : "CF M3",
+                    "fl_mes_3"           : "FL M3",
+                    "dc_mes_3"           : "DC M3",
+                    "cl_mes_3"           : "CL M3",
+                    "tarifa_mes_3"       : "Tarifa M3",
+                    "cf_mes_4"           : "CF M4",
+                    "fl_mes_4"           : "FL M4",
+                    "dc_mes_4"           : "DC M4",
+                    "cl_mes_4"           : "CL M4",
+                    "tarifa_mes_4"       : "Tarifa M4",
+                    "cf_mes_5"           : "CF M5",
+                    "fl_mes_5"           : "FL M5",
+                    "dc_mes_5"           : "DC M5",
+                    "cl_mes_5"           : "CL M5",
+                    "tarifa_mes_5"       : "Tarifa M5",
+                    "cf_mes_6"           : "CF M6",
+                    "fl_mes_6"           : "FL M6",
+                    "dc_mes_6"           : "DC M6",
+                    "cl_mes_6"           : "CL M6",
+                    "lectura_anterior"   : "Lec. Anterior",
+                    "lectura_actual"     : "Lec. Actual",
+                    "factor_correccion"  : "Factor Corrección",
+                    "total_consumo"      : "Total Consumo",
+                    "total_dias"         : "Total Días",
+                    "promedio_diario"    : "Prom. Diario",
+                    "promedio_mensual"   : "Prom. Mensual",
+                    "promedio_redondeado": "Prom. Redondeado",
+                    "tarifa_actual"      : "Tarifa Actual",
+                    "tarifa_nueva"       : "Tarifa Nueva",
+                    "recategorizar"      : "¿Recategorizar?",
+                    "rango_consumo"      : "Rango Consumo",
+                    "comportamiento"     : "Comportamiento",
+                })
+                df5.to_excel(writer, sheet_name="Matriz Recategorización", index=False, startrow=4)
+                ws5 = writer.sheets["Matriz Recategorización"]
+                nc5 = len(df5.columns)
+                titulo_hoja(ws5, "CONTUGAS — Matriz de Recategorización",
+                            f"Detalle por instalación · {len(df5):,} registros · {fecha_lima.strftime('%d/%m/%Y %H:%M')}", nc5)
+                ws5.row_dimensions[5].height = 32
+                estilo_header(ws5, 5, 1, nc5, "1E3A5F", BLANCO)
+                col_rec = df5.columns.get_loc("¿Recategorizar?") + 1
+                for i, row in enumerate(ws5.iter_rows(min_row=6, max_row=5 + len(df5), min_col=1, max_col=nc5)):
+                    zebra = i % 2 == 0
+                    for cell in row:
+                        cell.fill      = PatternFill("solid", fgColor=AZUL_ROW if zebra else BLANCO)
+                        cell.font      = Font(size=9, name="Calibri", color="374151")
+                        cell.alignment = Alignment(vertical="center")
+                        cell.border    = border_thin
+                        if cell.column == col_rec:
+                            if cell.value == "Sí":
+                                cell.fill = PatternFill("solid", fgColor=VERDE_CLARO)
+                                cell.font = Font(size=9, name="Calibri", color=VERDE, bold=True)
+                            elif cell.value == "No":
+                                cell.fill = PatternFill("solid", fgColor=GRIS_CLARO)
+                                cell.font = Font(size=9, name="Calibri", color="6B7280")
+                ws5.freeze_panes = "A6"
+                autofit(ws5)
 
         output.seek(0)
         fecha_str = fecha_lima.strftime("%Y%m%d_%H%M")
@@ -709,7 +853,7 @@ class ComparativaView(APIView):
         def resumen(imp):
             return {
                 "id":              imp.id,
-                "fecha": imp.fecha_importacion.astimezone(
+                "fecha":           imp.fecha_importacion.astimezone(
                     __import__('zoneinfo').ZoneInfo('America/Lima')
                 ).strftime("%d/%m/%Y %H:%M"),
                 "total_registros": imp.total_registros,
@@ -774,13 +918,12 @@ class FiltrosDashboardView(APIView):
             qs = qs.filter(periodo__lte=fecha_hasta)
 
         cuentas_filtradas = qs.values_list('cuenta_contrato', flat=True).distinct()
+        clientes_qs       = Cliente.objects.filter(importacion=imp, cuenta_contrato__in=cuentas_filtradas)
+        total             = clientes_qs.count()
+        recategorizados   = clientes_qs.filter(estado='Recategorizado').count()
+        sin_cambios       = clientes_qs.filter(estado='Sin cambio').count()
 
-        clientes_qs     = Cliente.objects.filter(importacion=imp, cuenta_contrato__in=cuentas_filtradas)
-        total           = clientes_qs.count()
-        recategorizados = clientes_qs.filter(estado='Recategorizado').count()
-        sin_cambios     = clientes_qs.filter(estado='Sin cambio').count()
-
-        no_aptos_qs = ClienteNoApto.objects.filter(importacion=imp)
+        no_aptos_qs    = ClienteNoApto.objects.filter(importacion=imp)
         if porcion:
             no_aptos_qs = no_aptos_qs.filter(porcion=porcion)
         no_aptos_count = no_aptos_qs.count()
@@ -810,3 +953,111 @@ class FiltrosDashboardView(APIView):
                 "consumo_por_periodo":     consumo_por_periodo,
             }
         })
+
+
+class MatrizRecategorizacionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        importacion_id = request.query_params.get('importacion_id', '')
+        search         = request.query_params.get('search', '')
+        recategorizar  = request.query_params.get('recategorizar', '')
+        page           = int(request.query_params.get('page', 1))
+        size           = int(request.query_params.get('page_size', 50))
+
+        es_admin = request.user.rol == 'admin'
+        if importacion_id:
+            try:
+                imp = ResultadoImportacion.objects.get(id=importacion_id) if es_admin else ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
+            except ResultadoImportacion.DoesNotExist:
+                imp = ResultadoImportacion.objects.order_by('-fecha_importacion').first() if es_admin else ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
+        else:
+            imp = ResultadoImportacion.objects.order_by('-fecha_importacion').first() if es_admin else ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
+
+        if not imp:
+            return Response({"count": 0, "results": []})
+
+        qs = MatrizRecategorizacion.objects.filter(importacion=imp)
+        if search:
+            qs = qs.filter(Q(instalacion__icontains=search) | Q(cuenta_contrato__icontains=search))
+        if recategorizar:
+            qs = qs.filter(recategorizar=recategorizar)
+
+        total  = qs.count()
+        offset = (page - 1) * size
+        rows   = qs[offset:offset + size]
+
+        results = []
+        for r in rows:
+            results.append({
+                "instalacion"        : r.instalacion,
+                "cuenta_contrato"    : r.cuenta_contrato,
+                "porcion"            : r.porcion or "-",
+                "tipo_tarifa"        : r.tipo_tarifa,
+                "cf_mes_historico"   : r.cf_mes_historico,
+                "fl_mes_historico"   : str(r.fl_mes_historico) if r.fl_mes_historico else None,
+                "cl_mes_historico"   : r.cl_mes_historico,
+                "cf_mes_1"           : r.cf_mes_1,  "fl_mes_1": str(r.fl_mes_1) if r.fl_mes_1 else None,  "dc_mes_1": r.dc_mes_1,  "cl_mes_1": r.cl_mes_1,  "tarifa_mes_1": r.tarifa_mes_1,
+                "cf_mes_2"           : r.cf_mes_2,  "fl_mes_2": str(r.fl_mes_2) if r.fl_mes_2 else None,  "dc_mes_2": r.dc_mes_2,  "cl_mes_2": r.cl_mes_2,  "tarifa_mes_2": r.tarifa_mes_2,
+                "cf_mes_3"           : r.cf_mes_3,  "fl_mes_3": str(r.fl_mes_3) if r.fl_mes_3 else None,  "dc_mes_3": r.dc_mes_3,  "cl_mes_3": r.cl_mes_3,  "tarifa_mes_3": r.tarifa_mes_3,
+                "cf_mes_4"           : r.cf_mes_4,  "fl_mes_4": str(r.fl_mes_4) if r.fl_mes_4 else None,  "dc_mes_4": r.dc_mes_4,  "cl_mes_4": r.cl_mes_4,  "tarifa_mes_4": r.tarifa_mes_4,
+                "cf_mes_5"           : r.cf_mes_5,  "fl_mes_5": str(r.fl_mes_5) if r.fl_mes_5 else None,  "dc_mes_5": r.dc_mes_5,  "cl_mes_5": r.cl_mes_5,  "tarifa_mes_5": r.tarifa_mes_5,
+                "cf_mes_6"           : r.cf_mes_6,  "fl_mes_6": str(r.fl_mes_6) if r.fl_mes_6 else None,  "dc_mes_6": r.dc_mes_6,  "cl_mes_6": r.cl_mes_6,
+                "lectura_anterior"   : r.lectura_anterior,
+                "lectura_actual"     : r.lectura_actual,
+                "factor_correccion"  : r.factor_correccion,
+                "total_consumo"      : round(r.total_consumo, 2),
+                "total_dias"         : r.total_dias,
+                "promedio_diario"    : round(r.promedio_diario, 4),
+                "promedio_mensual"   : round(r.promedio_mensual, 2),
+                "promedio_redondeado": r.promedio_redondeado,
+                "tarifa_actual"      : r.tarifa_actual,
+                "tarifa_nueva"       : r.tarifa_nueva,
+                "recategorizar"      : r.recategorizar,
+                "rango_consumo"      : r.rango_consumo,
+                "comportamiento"     : r.comportamiento,
+            })
+
+        return Response({"count": total, "results": results})
+
+
+class ClienteNoAptoListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        importacion_id = request.query_params.get('importacion_id', '')
+        search         = request.query_params.get('search', '')
+        page           = int(request.query_params.get('page', 1))
+        size           = int(request.query_params.get('page_size', 50))
+
+        es_admin = request.user.rol == 'admin'
+        if importacion_id:
+            try:
+                imp = ResultadoImportacion.objects.get(id=importacion_id) if es_admin else ResultadoImportacion.objects.get(id=importacion_id, usuario=request.user)
+            except ResultadoImportacion.DoesNotExist:
+                imp = ResultadoImportacion.objects.order_by('-fecha_importacion').first() if es_admin else ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
+        else:
+            imp = ResultadoImportacion.objects.order_by('-fecha_importacion').first() if es_admin else ResultadoImportacion.objects.filter(usuario=request.user).order_by('-fecha_importacion').first()
+
+        if not imp:
+            return Response({"count": 0, "results": []})
+
+        qs = ClienteNoApto.objects.filter(importacion=imp)
+        if search:
+            qs = qs.filter(Q(instalacion__icontains=search) | Q(cuenta_contrato__icontains=search))
+
+        total  = qs.count()
+        offset = (page - 1) * size
+        rows   = qs[offset:offset + size]
+
+        results = [{
+            "instalacion"      : r.instalacion,
+            "cuenta_contrato"  : r.cuenta_contrato,
+            "tarifa_referencia": r.tarifa_referencia,
+            "observacion"      : r.observacion,
+            "porcion"          : r.porcion or "—",
+            "meses_en_ventana" : r.meses_en_ventana,
+            "estado_inicial"   : r.estado_inicial or "No apto",
+        } for r in rows]
+
+        return Response({"count": total, "results": results})
