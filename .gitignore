@@ -210,4 +210,4 @@ node_modules/
 
 # Variables de entorno - Contugas
 backend/.env
-frontend/.env
+frontend/.envrecategorizacion_db.sql 
